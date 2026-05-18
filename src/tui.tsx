@@ -9,9 +9,9 @@ const routeName = "threads";
 const tui: TuiPlugin = async (api) => {
   api.command?.register(() => [
     {
-      title: "OpenCode Threads",
-      value: "agents.open",
-      description: "Manage all OpenCode sessions",
+      title: "Threads",
+      value: "threads.open",
+      description: "Manage sessions as threads",
       category: "Plugin",
       slash: { name: "threads" },
       onSelect: () => {
