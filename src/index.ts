@@ -1,7 +1,5 @@
 import { tool, type Plugin } from "@opencode-ai/plugin";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { readThreadRelations, writeThreadRelations } from "./thread-relations";
 
 const THREADS_COMMAND = "threads";
 
@@ -9,10 +7,6 @@ type SpawnThreadInput = {
   title: string;
   prompt: string;
 };
-
-const relationsPath = join(homedir(), ".local", "share", "opencode-threads", "threads.json");
-// Remove this UI-only relationship store once OpenCode exposes enterable fork/thread nesting natively.
-// Tracking issue: https://github.com/anomalyco/opencode/issues/16639
 
 function unwrap<T>(result: T | { data?: T }): T {
   if (result && typeof result === "object" && "data" in result) return (result as { data?: T }).data as T;
@@ -72,19 +66,6 @@ async function currentSessionContext(sessionApi: any, sessionID: string): Promis
   } catch {
     return "";
   }
-}
-
-async function readRelations(): Promise<Record<string, string>> {
-  try {
-    return JSON.parse(await readFile(relationsPath, "utf8")) as Record<string, string>;
-  } catch {
-    return {};
-  }
-}
-
-async function writeRelations(relations: Record<string, string>) {
-  await mkdir(dirname(relationsPath), { recursive: true });
-  await writeFile(relationsPath, `${JSON.stringify(relations, null, 2)}\n`);
 }
 
 function sessionID(session: any): string | undefined {
@@ -245,7 +226,7 @@ const AgentViewPlugin: Plugin = async ({ client }) => {
         async execute(args: { threads: SpawnThreadInput[] }, context) {
           const sessionApi = (client as any).session;
           const created: Array<{ id: string; title: string }> = [];
-          const relations = await readRelations();
+          const relations = await readThreadRelations();
 
           for (const thread of args.threads) {
             const session = await createThreadSession(sessionApi, thread.title, context.sessionID);
@@ -256,7 +237,7 @@ const AgentViewPlugin: Plugin = async ({ client }) => {
             created.push({ id, title: thread.title });
           }
 
-          await writeRelations(relations);
+          await writeThreadRelations(relations);
 
           return {
             output: created.length

@@ -4,9 +4,7 @@ import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core";
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule, TuiPromptRef } from "@opencode-ai/plugin/tui";
 import { useKeyboard } from "@opentui/solid";
 import { createEffect, createMemo, createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { readThreadRelations } from "./thread-relations";
 
 const id = "opencode.threads";
 const routeName = "threads";
@@ -41,9 +39,6 @@ type SessionGroup = {
 const activeSessionIDs = new Set<string>();
 const liveFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const draftSessionID = "__opencode-threads-draft__";
-const relationsPath = join(homedir(), ".local", "share", "opencode-threads", "threads.json");
-// Remove this UI-only relationship store once OpenCode exposes enterable fork/thread nesting natively.
-// Tracking issue: https://github.com/anomalyco/opencode/issues/16639
 
 type AgentViewRouteProps = {
   api: TuiPluginApi;
@@ -217,7 +212,7 @@ async function loadSessions(api: TuiPluginApi): Promise<AgentSession[]> {
   const sessionApi = api.client.session as any;
   const rawSessions = unwrap<any[]>(await sessionApi.list()) ?? [];
   const statusMap = unwrap<Record<string, any>>(await sessionApi.status?.().catch(() => ({}))) ?? {};
-  const relations = await readRelations();
+  const relations = await readThreadRelations();
   const loadedAt = Date.now();
 
   const rows = await Promise.all(
@@ -267,17 +262,6 @@ async function loadSessions(api: TuiPluginApi): Promise<AgentSession[]> {
   return roots
     .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
     .flatMap((row) => [row, ...(children.get(row.id) ?? [])]);
-}
-
-async function readRelations(): Promise<Record<string, string>> {
-  try {
-    const parsed = JSON.parse(await readFile(relationsPath, "utf8")) as Record<string, string>;
-    return Object.fromEntries(
-      Object.entries(parsed).filter(([childID, parentID]) => childID !== "undefined" && Boolean(childID && parentID)),
-    );
-  } catch {
-    return {};
-  }
 }
 
 function isHiddenSubAgentSession(session: any): boolean {

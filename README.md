@@ -85,4 +85,4 @@ The coordinator should identify the three stories, then create three user-contin
 
 The plugin intentionally does not register `/agents` because OpenCode already provides that as a built-in command.
 
-UI-only nesting is stored at `~/.local/share/opencode-threads/threads.json`. This can be removed if OpenCode adds native enterable thread nesting: https://github.com/anomalyco/opencode/issues/16639
+UI-only nesting is stored at `$XDG_STATE_HOME/opencode-threads/threads.json`, falling back to `~/.local/state/opencode-threads/threads.json`. This can be removed if OpenCode adds native enterable thread nesting: https://github.com/anomalyco/opencode/issues/16639

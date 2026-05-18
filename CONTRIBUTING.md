@@ -55,7 +55,9 @@ npm pack --dry-run
 OpenCode Threads stores UI-only thread nesting at:
 
 ```text
-~/.local/share/opencode-threads/threads.json
+$XDG_STATE_HOME/opencode-threads/threads.json
 ```
+
+If `XDG_STATE_HOME` is unset, it falls back to `~/.local/state/opencode-threads/threads.json`.
 
 Delete that file if you need to reset local nesting state while testing.
