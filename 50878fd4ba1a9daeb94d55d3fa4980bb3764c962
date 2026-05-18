@@ -1,0 +1,25 @@
+src/thread-catalog.ts
+  41870a2aeaab207d 64,66,69-73,75,83-96,99,112-115,132
+src/tui-format.ts
+  41870a2aeaab207d 30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "50878fd4ba1a9daeb94d55d3fa4980bb3764c962",
+  "prompts": {
+    "41870a2aeaab207d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_1c314e782ffepbTP3upnOJUeNU",
+        "model": "openai/gpt-5.5"
+      },
+      "human_author": "Eric Clemmons",
+      "messages": [],
+      "total_additions": 31,
+      "total_deletions": 11,
+      "accepted_lines": 31,
+      "overriden_lines": 0
+    }
+  }
+}
