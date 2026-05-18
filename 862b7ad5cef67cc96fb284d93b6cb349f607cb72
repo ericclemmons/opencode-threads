@@ -1,0 +1,25 @@
+src/tui-route.tsx
+  6d3d3d344b3cc5de 211,223,297
+src/tui-keyboard.ts
+  6d3d3d344b3cc5de 28,38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "862b7ad5cef67cc96fb284d93b6cb349f607cb72",
+  "prompts": {
+    "6d3d3d344b3cc5de": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_1c30c1891ffeyoXITWr4YhM1qV",
+        "model": "cloudflare-workers-ai/@cf/moonshotai/kimi-k2.6"
+      },
+      "human_author": "Eric Clemmons",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 4,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    }
+  }
+}
