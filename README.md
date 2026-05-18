@@ -15,35 +15,58 @@ OpenCode Threads adds a `/threads` view for managing sessions and a `spawn_threa
 - `/threads <request>` injects a coordinator prompt that identifies N items and creates N user-continuable sessions.
 - Spawned sessions are visually nested with a UI-only relation map until OpenCode exposes native enterable thread nesting.
 
-## Install Locally
+## Installation
 
-```bash
-opencode plugin /Users/eric/Projects/ericclemmons/opencode-threads --global --force
+Add `opencode-threads` to your OpenCode plugin config.
+
+For a single project, add it to `opencode.json` in your app:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["opencode-threads"]
+}
 ```
 
-Then restart OpenCode and run `/threads`.
+For every project on your machine, add the same config to `~/.config/opencode/opencode.json`.
 
-OpenCode writes server plugins to `opencode.json` and TUI plugins to `tui.json`.
+Then start or restart OpenCode and run `/threads`.
 
-Global locations:
+OpenCode installs npm plugins automatically at startup and caches them in `~/.cache/opencode/node_modules/`.
+
+## TUI Plugin
+
+OpenCode's npm plugin config loads the server plugin. OpenCode Threads also includes a TUI plugin for the `/threads` session manager. Add it to your TUI plugin config:
+
+Project-level `.opencode/tui.json`:
+
+```json
+{
+  "plugin": ["opencode-threads/tui"]
+}
+```
+
+Or global `~/.config/opencode/tui.json`:
+
+```json
+{
+  "plugin": ["opencode-threads/tui"]
+}
+```
+
+Restart OpenCode after changing plugin config.
+
+## Config Locations
+
+Server plugin config:
 
 - `~/.config/opencode/opencode.json`
+- `.opencode/opencode.json` or `opencode.json` in your project
+
+TUI plugin config:
+
 - `~/.config/opencode/tui.json`
-
-Project locations:
-
-- `.opencode/opencode.json`
 - `.opencode/tui.json`
-
-## Development
-
-```bash
-npm install
-npm run typecheck
-npm run build
-```
-
-Restart OpenCode after changing server exports, TUI exports, or build output.
 
 ## Commands
 
