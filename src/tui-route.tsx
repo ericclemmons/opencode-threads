@@ -11,6 +11,10 @@ import { loadSessions, loadSessionTranscript } from "./tui-loader";
 import { padCell, rowActionHint, rowPreviewColor, rowStatusText, rowTime, rowTimeColor, rowTitle, rowTitleColor, statusColor, truncate } from "./tui-format";
 
 const activeSessionIDs = new Set<string>();
+const selectedTranscriptMessageLimit = 500;
+const replyContextLineCount = 10;
+const replyContextHeight = 5;
+const replyPromptHeight = 4;
 
 export type AgentViewRouteProps = {
   api: TuiPluginApi;
@@ -27,6 +31,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
   const [liveFrame, setLiveFrame] = createSignal(0);
   const [timeTick, setTimeTick] = createSignal(0);
   const [promptOpen, setPromptOpen] = createSignal(false);
+  const [peekOpen, setPeekOpen] = createSignal(false);
   const [optimisticSession, setOptimisticSession] = createSignal<AgentSession>();
   const [sessions, { refetch }] = createResource(refreshKey, () => loadSessions(props.api));
   const theme = () => props.api.theme.current;
@@ -51,13 +56,34 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
 
   const selectedID = createMemo(() => selected()?.id);
   const [selectedTranscript, { refetch: refetchSelectedTranscript }] = createResource(
-    () => ({ id: selectedID(), key: selectedRefreshKey() }),
-    async ({ id }) => (id ? loadSessionTranscript(props.api.client, id) : undefined),
+    () => ({ id: selectedID(), key: selectedRefreshKey(), full: peekOpen() || promptOpen() }),
+    async ({ id, full }) => (id
+      ? loadSessionTranscript(
+        props.api.client,
+        id,
+        full ? selectedTranscriptMessageLimit : undefined,
+        full ? Number.POSITIVE_INFINITY : undefined,
+      )
+      : undefined),
   );
   const selectedPeek = createMemo(() => {
     const row = selected();
     const transcript = selectedTranscript();
     return row && transcript?.id === row.id ? transcript : undefined;
+  });
+  const replyContextLines = createMemo(() => {
+    const transcript = selectedPeek()?.transcript ?? selected()?.transcript ?? [];
+    return transcript
+      .flatMap((turn) => {
+        const prefix = turn.speaker ? `${turn.speaker}: ` : "";
+        return turn.text.split("\n").map((line, index) => {
+          const text = line.trim();
+          if (!text) return "";
+          return index === 0 ? `${prefix}${text}` : text;
+        });
+      })
+      .filter(Boolean)
+      .slice(-replyContextLineCount);
   });
 
   const refresh = () => {
@@ -75,12 +101,25 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
     promptRef?.blur();
     promptRef?.reset();
     setPromptOpen(false);
+    setPeekOpen(false);
+    scroll?.focus();
+  };
+
+  const closePeek = () => {
+    setPeekOpen(false);
     scroll?.focus();
   };
 
   const replyInline = () => {
     setPromptOpen(true);
+    setPeekOpen(true);
     queueMicrotask(() => promptRef?.focus());
+  };
+
+  const togglePeek = () => {
+    if (!selected() || selected()?.draft) return;
+    setPeekOpen((value) => !value);
+    queueMicrotask(() => scroll?.focus());
   };
 
   const newAgent = () => {
@@ -199,12 +238,15 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
   const onThreadKeyDown = (evt: Parameters<typeof handleThreadKeyboard>[0]) => handleThreadKeyboard(evt, {
     dialogOpen: () => props.api.ui.dialog.open,
     promptOpen,
+    peekOpen,
     closePrompt,
+    closePeek,
     goBack,
     moveSelection,
     attachSelected,
     newAgent,
     replyInline,
+    togglePeek,
     abortSelected: () => void abortSelected(),
     archiveSelected: () => void archiveSelected(),
     deleteSelected: () => void deleteSelected(),
@@ -260,6 +302,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
     promptRef?.blur();
     promptRef?.reset();
     setPromptOpen(false);
+    setPeekOpen(false);
     refreshSelected();
   });
 
@@ -268,6 +311,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
       <box paddingLeft={2} paddingRight={2} paddingTop={1} paddingBottom={1} flexDirection="row" gap={3}>
         <box flexDirection="row" gap={2}>
           <text fg={theme().textMuted}>j/k move</text>
+          <text fg={theme().accent}>space peek</text>
           <text fg={theme().accent}>n new</text>
           <text fg={theme().accent}>r reply</text>
           <text fg={theme().textMuted}>enter attach</text>
@@ -286,59 +330,85 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
           scrollbarOptions={{ visible: false }}
         >
           <box flexDirection="column" width="100%">
-            <Show when={!sessions.loading || visibleSessions().length > 0} fallback={<text fg={theme().textMuted}>Loading sessions...</text>}>
-              <For each={groups()} fallback={<text fg={theme().textMuted}>No sessions yet. Press n to start one.</text>}>
-                {(group) => (
-                  <box flexDirection="column" paddingTop={1}>
-                    <box flexDirection="row" gap={1}>
-                      <text fg={theme().textMuted} attributes={TextAttributes.BOLD}>{group.title}</text>
-                    </box>
-                    <For each={group.rows}>
-                      {(row) => {
-                        const globalIndex = () => listRows().findIndex((item) => item.id === row.id);
-                        const selectedRow = () => selected()?.id === row.id;
-                        const preview = () => selectedRow() ? selectedPeek()?.preview : undefined;
-                        return (
-                          <box
-                            id={`thread-row-${row.id}`}
-                            flexDirection="row"
-                            width="100%"
-                            gap={3}
-                            paddingLeft={1}
-                            paddingRight={1}
-                            backgroundColor={selectedRow() ? theme().backgroundElement : undefined}
-                          >
-                            <text
-                              fg={statusColor(theme(), row.statusTone)}
-                              attributes={selectedRow() ? TextAttributes.BOLD : undefined}
-                              wrapMode="none"
-                            >
-                              {padCell(rowStatusText(row, liveFrame(), globalIndex()), 3)}
-                            </text>
-                            <text
-                              fg={rowTitleColor(theme(), row, selectedRow())}
-                              wrapMode="none"
-                            >
-                              {padCell(truncate(rowTitle(row), 34), 36)}
-                            </text>
-                            <text
-                              fg={rowPreviewColor(theme(), row, selectedRow())}
-                              flexGrow={1}
-                              minWidth={0}
-                              wrapMode="none"
-                            >
-                              {rowActionHint(row, selectedRow(), preview())}
-                            </text>
-                            <text fg={rowTimeColor(theme(), selectedRow())} wrapMode="none">
-                              {rowTime(row, timeTick())}
-                            </text>
-                          </box>
-                        );
-                      }}
-                    </For>
-                  </box>
-                )}
-              </For>
+            <Show
+              when={peekOpen() && selected() && !selected()?.draft}
+              fallback={(
+                <Show when={!sessions.loading || visibleSessions().length > 0} fallback={<text fg={theme().textMuted}>Loading sessions...</text>}>
+                  <For each={groups()} fallback={<text fg={theme().textMuted}>No sessions yet. Press n to start one.</text>}>
+                    {(group) => (
+                      <box flexDirection="column" paddingTop={1}>
+                        <box flexDirection="row" gap={1}>
+                          <text fg={theme().textMuted} attributes={TextAttributes.BOLD}>{group.title}</text>
+                        </box>
+                        <For each={group.rows}>
+                          {(row) => {
+                            const globalIndex = () => listRows().findIndex((item) => item.id === row.id);
+                            const selectedRow = () => selected()?.id === row.id;
+                            const preview = () => selectedRow() ? selectedPeek()?.preview : undefined;
+                            return (
+                              <box
+                                id={`thread-row-${row.id}`}
+                                flexDirection="row"
+                                width="100%"
+                                gap={3}
+                                paddingLeft={1}
+                                paddingRight={1}
+                                backgroundColor={selectedRow() ? theme().backgroundElement : undefined}
+                              >
+                                <text
+                                  fg={statusColor(theme(), row.statusTone)}
+                                  attributes={selectedRow() ? TextAttributes.BOLD : undefined}
+                                  wrapMode="none"
+                                >
+                                  {padCell(rowStatusText(row, liveFrame(), globalIndex()), 3)}
+                                </text>
+                                <text
+                                  fg={rowTitleColor(theme(), row, selectedRow())}
+                                  wrapMode="none"
+                                >
+                                  {padCell(truncate(rowTitle(row), 34), 36)}
+                                </text>
+                                <text
+                                  fg={rowPreviewColor(theme(), row, selectedRow())}
+                                  flexGrow={1}
+                                  minWidth={0}
+                                  wrapMode="none"
+                                >
+                                  {rowActionHint(row, selectedRow(), preview())}
+                                </text>
+                                <text fg={rowTimeColor(theme(), selectedRow())} wrapMode="none">
+                                  {rowTime(row, timeTick())}
+                                </text>
+                              </box>
+                            );
+                          }}
+                        </For>
+                      </box>
+                    )}
+                  </For>
+                </Show>
+              )}
+            >
+              <box flexDirection="column" width="100%" paddingLeft={1} paddingRight={1} paddingTop={1}>
+                <box flexDirection="row" gap={2}>
+                  <text fg={theme().accent} attributes={TextAttributes.BOLD}>Peek</text>
+                  <text fg={theme().textMuted}>{selected()?.title}</text>
+                </box>
+                <Show when={selectedPeek()?.transcript.length} fallback={<text fg={theme().textMuted}>No transcript available.</text>}>
+                  <For each={selectedPeek()?.transcript ?? []}>
+                    {(turn) => (
+                      <box flexDirection="column" paddingTop={1}>
+                        <Show when={turn.speaker}>
+                          <text fg={theme().accent} attributes={TextAttributes.BOLD}>{turn.speaker}</text>
+                        </Show>
+                        <For each={turn.text.split("\n")}>
+                          {(line) => <text fg={theme().text}>{line}</text>}
+                        </For>
+                      </box>
+                    )}
+                  </For>
+                </Show>
+              </box>
             </Show>
           </box>
         </scrollbox>
@@ -355,19 +425,13 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
         >
           <Show when={selected()} keyed fallback={<text fg={theme().textMuted}>Select a session.</text>}>
             {(row) => (
-              <box flexDirection="column" gap={1} height="100%">
+              <box flexDirection="column" height="100%">
                 <box flexDirection="row" gap={2}>
                   <text fg={theme().text} attributes={TextAttributes.BOLD}>{row.title}</text>
                   <Show when={row.statusTone !== "done"}>
                     <text fg={statusColor(theme(), row.statusTone)}>{row.status}</text>
                   </Show>
                   <text fg={theme().textMuted}>{rowTime(row, timeTick())}</text>
-                </box>
-
-                <box flexDirection="column" gap={1}>
-                  <text fg={theme().textMuted} wrapMode="word">
-                    Press r to reply
-                  </text>
                 </box>
 
                 <box paddingTop={0} flexDirection="column" gap={0} flexGrow={1} minHeight={0}>
@@ -387,20 +451,43 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
                       </box>
                     )}
                   >
-                    <props.api.ui.Prompt
-                      sessionID={row.id}
-                      visible
-                      ref={(ref) => (promptRef = ref)}
-                      onSubmit={() => {
-                        promptRef?.blur();
-                        setPromptOpen(false);
-                        scroll?.focus();
-                        refreshSelected();
-                        refresh();
-                      }}
-                      showPlaceholder
-                      placeholders={{ normal: ["Reply to this thread..."] }}
-                    />
+                    <box flexDirection="column" height="100%" minHeight={0}>
+                      <scrollbox
+                        height={replyContextHeight}
+                        maxHeight={replyContextHeight}
+                        minHeight={0}
+                        stickyScroll
+                        stickyStart="bottom"
+                        scrollbarOptions={{ visible: false }}
+                      >
+                        <box flexDirection="column" width="100%">
+                          <For each={replyContextLines()} fallback={<text fg={theme().textMuted}>No recent transcript yet.</text>}>
+                            {(line) => (
+                              <text fg={theme().textMuted} wrapMode="none">
+                                {truncate(line, 160)}
+                              </text>
+                            )}
+                          </For>
+                        </box>
+                      </scrollbox>
+                      <box height={replyPromptHeight} maxHeight={replyPromptHeight} overflow="hidden">
+                        <props.api.ui.Prompt
+                          sessionID={row.id}
+                          visible
+                          ref={(ref) => (promptRef = ref)}
+                          onSubmit={() => {
+                            promptRef?.blur();
+                            setPromptOpen(false);
+                            setPeekOpen(false);
+                            scroll?.focus();
+                            refreshSelected();
+                            refresh();
+                          }}
+                          showPlaceholder
+                          placeholders={{ normal: ["Reply to this thread..."] }}
+                        />
+                      </box>
+                    </box>
                   </Show>
                 </box>
               </box>

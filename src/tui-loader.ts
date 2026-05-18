@@ -4,10 +4,15 @@ import { SessionGateway } from "./session-gateway";
 import { readThreadRelations } from "./thread-relations";
 import { buildThreadRows, type AgentSession } from "./thread-catalog";
 
-export async function loadSessionTranscript(client: any, sessionID: string): Promise<{ id: string; preview: string; transcript: TranscriptTurn[] }> {
+export async function loadSessionTranscript(
+  client: any,
+  sessionID: string,
+  messageLimit = 48,
+  transcriptLimit = 8,
+): Promise<{ id: string; preview: string; transcript: TranscriptTurn[] }> {
   try {
-    const messages = orderedMessages(await new SessionGateway(client).messages(sessionID, 48));
-    const transcript = sessionTranscript(messages);
+    const messages = orderedMessages(await new SessionGateway(client).messages(sessionID, messageLimit));
+    const transcript = sessionTranscript(messages, transcriptLimit);
     return { id: sessionID, preview: latestTurnText(messages), transcript };
   } catch {
     return { id: sessionID, preview: "Preview unavailable.", transcript: [] };

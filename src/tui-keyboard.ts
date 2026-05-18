@@ -11,12 +11,15 @@ export type ThreadKeyboardEvent = {
 export type ThreadKeyboardHandlers = {
   dialogOpen: () => boolean;
   promptOpen: () => boolean;
+  peekOpen: () => boolean;
   closePrompt: () => void;
+  closePeek: () => void;
   goBack: () => void;
   moveSelection: (delta: number) => void;
   attachSelected: () => void;
   newAgent: () => void;
   replyInline: () => void;
+  togglePeek: () => void;
   abortSelected: () => void;
   archiveSelected: () => void;
   deleteSelected: () => void;
@@ -31,6 +34,10 @@ export function handleThreadKeyboard(evt: ThreadKeyboardEvent, handlers: ThreadK
       handlers.closePrompt();
       return;
     }
+    if (handlers.peekOpen()) {
+      handlers.closePeek();
+      return;
+    }
     handlers.goBack();
     return;
   }
@@ -38,6 +45,20 @@ export function handleThreadKeyboard(evt: ThreadKeyboardEvent, handlers: ThreadK
   if (evt.ctrl || evt.meta || evt.super) return;
 
   if (handlers.promptOpen()) return;
+
+  if (evt.name === "space" || evt.name === " ") {
+    prevent(evt);
+    handlers.togglePeek();
+    return;
+  }
+
+  if (evt.name === "r") {
+    prevent(evt);
+    handlers.replyInline();
+    return;
+  }
+
+  if (handlers.peekOpen()) return;
 
   if (evt.name === "up" || evt.name === "k") {
     prevent(evt);
@@ -60,12 +81,6 @@ export function handleThreadKeyboard(evt: ThreadKeyboardEvent, handlers: ThreadK
   if (evt.name === "n") {
     prevent(evt);
     handlers.newAgent();
-    return;
-  }
-
-  if (evt.name === "r") {
-    prevent(evt);
-    handlers.replyInline();
     return;
   }
 

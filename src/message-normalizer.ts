@@ -134,7 +134,8 @@ export function orderedMessages(messages: any[]): any[] {
 }
 
 export function sessionTranscript(messages: any[], limit = 8): TranscriptTurn[] {
-  return messages.map(visibleTranscriptTurn).filter(Boolean).slice(-limit) as TranscriptTurn[];
+  const turns = messages.map(visibleTranscriptTurn).filter(Boolean) as TranscriptTurn[];
+  return Number.isFinite(limit) ? turns.slice(-limit) : turns;
 }
 
 export function latestTurnText(messages: any[]): string {
