@@ -27,7 +27,7 @@ export function padCell(value: string, width: number): string {
 }
 
 export function rowTitle(row: AgentSession): string {
-  return row.depth > 0 ? `  ${row.title}` : row.title;
+  return row.depth > 0 ? `${"  ".repeat(Math.min(row.depth, 4))}${row.title}` : row.title;
 }
 
 export function rowActionHint(row: AgentSession, _selected: boolean, preview?: string): string {

@@ -61,14 +61,18 @@ export async function buildThreadRows(input: BuildThreadRowsInput): Promise<Agen
 }
 
 export function flattenNestedThreadRows(rows: AgentSession[]): AgentSession[] {
+  const rowIDs = new Set(rows.map((row) => row.id));
   const children = new Map<string, AgentSession[]>();
-  const roots = rows.filter((row) => !row.parentID);
-  const rootIDs = new Set(roots.map((row) => row.id));
+  const roots: AgentSession[] = [];
 
   for (const row of rows) {
-    if (!row.parentID || !rootIDs.has(row.parentID)) continue;
+    if (!row.parentID || row.parentID === row.id || !rowIDs.has(row.parentID)) {
+      roots.push({ ...row, parentID: undefined, depth: 0 });
+      continue;
+    }
+
     const list = children.get(row.parentID) ?? [];
-    list.push({ ...row, depth: 1 });
+    list.push(row);
     children.set(row.parentID, list);
   }
 
@@ -76,9 +80,23 @@ export function flattenNestedThreadRows(rows: AgentSession[]): AgentSession[] {
     list.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
   }
 
-  return roots
-    .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-    .flatMap((row) => [row, ...(children.get(row.id) ?? [])]);
+  roots.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+
+  const flattened: AgentSession[] = [];
+  const visited = new Set<string>();
+  const append = (row: AgentSession, depth: number) => {
+    if (visited.has(row.id)) return;
+    visited.add(row.id);
+    flattened.push({ ...row, depth });
+    for (const child of children.get(row.id) ?? []) append(child, depth + 1);
+  };
+
+  for (const root of roots) append(root, 0);
+  for (const row of rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))) {
+    if (!visited.has(row.id)) append({ ...row, parentID: undefined }, 0);
+  }
+
+  return flattened;
 }
 
 export function groupThreadRows(rows: readonly AgentSession[], activeSessionIDs: ReadonlySet<string>, now = new Date()): SessionGroup[] {
@@ -91,8 +109,10 @@ export function groupThreadRows(rows: readonly AgentSession[], activeSessionIDs:
     children.set(row.parentID, list);
   }
 
-  const rowActive = (row: AgentSession) => activeSessionIDs.has(row.id) || row.statusTone === "waiting" || row.statusTone === "running";
-  const active = roots.filter((row) => rowActive(row) || (children.get(row.id) ?? []).some(rowActive));
+  const descendants = (row: AgentSession): AgentSession[] => (children.get(row.id) ?? []).flatMap((child) => [child, ...descendants(child)]);
+  const rowActive = (row: AgentSession): boolean => activeSessionIDs.has(row.id) || row.statusTone === "waiting" || row.statusTone === "running";
+  const subtreeActive = (row: AgentSession): boolean => rowActive(row) || (children.get(row.id) ?? []).some(subtreeActive);
+  const active = roots.filter(subtreeActive);
   const previous = roots.filter((row) => !active.includes(row));
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
@@ -109,7 +129,7 @@ export function groupThreadRows(rows: readonly AgentSession[], activeSessionIDs:
   const lastMonth = previous.filter((row) => (row.updatedAt ?? 0) >= startOfLastMonth && (row.updatedAt ?? 0) < startOfMonth);
   const older = previous.filter((row) => (row.updatedAt ?? 0) < startOfLastMonth);
 
-  const withChildren = (groupRows: AgentSession[]) => groupRows.flatMap((row) => [row, ...(children.get(row.id) ?? [])]);
+  const withChildren = (groupRows: AgentSession[]) => groupRows.flatMap((row) => [row, ...descendants(row)]);
 
   return [
     { title: "Active", rows: withChildren(active) },
