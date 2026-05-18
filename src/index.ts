@@ -2,14 +2,9 @@ import { tool, type Plugin } from "@opencode-ai/plugin";
 import { buildCoordinatorPrompt } from "./coordinator-prompt";
 import { coordinatorContextLines, orderedMessages } from "./message-normalizer";
 import { SessionGateway } from "./session-gateway";
-import { readThreadRelations, writeThreadRelations } from "./thread-relations";
+import { formatSpawnedThreads, spawnThreadSessions, type SpawnThreadInput } from "./thread-spawner";
 
 const THREADS_COMMAND = "threads";
-
-type SpawnThreadInput = {
-  title: string;
-  prompt: string;
-};
 
 async function currentSessionContext(gateway: SessionGateway, sessionID: string): Promise<string> {
   try {
@@ -53,22 +48,10 @@ const AgentViewPlugin: Plugin = async ({ client }) => {
         },
         async execute(args: { threads: SpawnThreadInput[] }, context) {
           const gateway = new SessionGateway(client);
-          const created: Array<{ id: string; title: string }> = [];
-          const relations = await readThreadRelations();
-
-          for (const thread of args.threads) {
-            const { id } = await gateway.createOrFork(thread.title, context.sessionID);
-            relations[id] = context.sessionID;
-            await gateway.sendPrompt(id, thread.prompt);
-            created.push({ id, title: thread.title });
-          }
-
-          await writeThreadRelations(relations);
+          const created = await spawnThreadSessions(gateway, context.sessionID, args.threads);
 
           return {
-            output: created.length
-              ? `Spawned ${created.length} thread(s):\n${created.map((item) => `- ${item.title}: ${item.id}`).join("\n")}`
-              : "No threads were spawned.",
+            output: formatSpawnedThreads(created),
             metadata: { threads: created },
           };
         },
