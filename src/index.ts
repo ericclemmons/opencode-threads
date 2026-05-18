@@ -1,5 +1,6 @@
 import { tool, type Plugin } from "@opencode-ai/plugin";
 import { buildCoordinatorPrompt } from "./coordinator-prompt";
+import { coordinatorContextLines, orderedMessages } from "./message-normalizer";
 import { readThreadRelations, writeThreadRelations } from "./thread-relations";
 
 const THREADS_COMMAND = "threads";
@@ -14,38 +15,6 @@ function unwrap<T>(result: T | { data?: T }): T {
   return result as T;
 }
 
-function compactText(input: unknown): string {
-  if (typeof input !== "string") return "";
-  return input.replace(/\s+/g, " ").trim();
-}
-
-function partText(part: any): string {
-  if (!part || typeof part !== "object") return "";
-  const type = typeof part.type === "string" ? part.type : "";
-  if (type && /^(step-|reasoning|tool|agent-|model-|session-|message-|part-)/i.test(type)) return "";
-  return compactText(part.text ?? part.content ?? part.summary);
-}
-
-function messageText(message: any): string {
-  const parts = Array.isArray(message?.content)
-    ? message.content
-    : Array.isArray(message?.parts)
-      ? message.parts
-      : Array.isArray(message?.info?.parts)
-        ? message.info.parts
-        : [];
-  const fromParts = compactText(parts.map(partText).filter(Boolean).join(" "));
-  if (fromParts) return fromParts;
-  return compactText(message?.info?.text ?? message?.text ?? message?.content ?? message?.summary);
-}
-
-function messageSpeaker(message: any): string {
-  const role = message?.info?.role ?? message?.role ?? message?.type;
-  if (role === "user") return "User";
-  if (role === "assistant") return "Assistant";
-  return "Note";
-}
-
 async function currentSessionContext(sessionApi: any, sessionID: string): Promise<string> {
   try {
     let result: unknown;
@@ -55,15 +24,8 @@ async function currentSessionContext(sessionApi: any, sessionID: string): Promis
       result = await sessionApi.messages?.({ sessionID, limit: 24 });
     }
     const payload = unwrap<any[] | { items?: any[] }>(result as any);
-    const messages = Array.isArray(payload) ? payload : payload?.items ?? [];
-    return messages
-      .map((message) => {
-        const text = messageText(message);
-        return text ? `${messageSpeaker(message)}: ${text}` : "";
-      })
-      .filter(Boolean)
-      .slice(-12)
-      .join("\n");
+    const messages = orderedMessages(Array.isArray(payload) ? payload : payload?.items ?? []);
+    return coordinatorContextLines(messages).join("\n");
   } catch {
     return "";
   }

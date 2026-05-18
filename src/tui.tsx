@@ -4,6 +4,7 @@ import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core";
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule, TuiPromptRef } from "@opencode-ai/plugin/tui";
 import { useKeyboard } from "@opentui/solid";
 import { createEffect, createMemo, createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { compactText, displayTime, latestTurnText, orderedMessages, sessionTranscript, type TranscriptTurn } from "./message-normalizer";
 import { readThreadRelations } from "./thread-relations";
 
 const id = "opencode.threads";
@@ -22,11 +23,6 @@ type AgentSession = {
   loadedAt: number;
   waitingCount: number;
   depth: number;
-};
-
-type TranscriptTurn = {
-  speaker?: string;
-  text: string;
 };
 
 type Theme = TuiPluginApi["theme"]["current"];
@@ -50,15 +46,6 @@ function unwrap<T>(result: T | { data?: T }): T {
   return result as T;
 }
 
-function displayTime(value: unknown): number | undefined {
-  if (typeof value === "number") return value;
-  if (typeof value === "string") {
-    const parsed = Date.parse(value);
-    return Number.isNaN(parsed) ? undefined : parsed;
-  }
-  return undefined;
-}
-
 function relativeTime(value?: number, now = Date.now()): string {
   if (!value) return "unknown";
   const seconds = Math.max(0, Math.round((now - value) / 1000));
@@ -68,122 +55,6 @@ function relativeTime(value?: number, now = Date.now()): string {
   const hours = Math.round(minutes / 60);
   if (hours < 48) return `${hours}h`;
   return `${Math.round(hours / 24)}d`;
-}
-
-function compactText(input: unknown): string {
-  if (typeof input !== "string") return "";
-  return input.replace(/\s+/g, " ").trim();
-}
-
-function cleanPreviewText(input: unknown): string {
-  return compactText(input)
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\b[IP]?Runsm[A-Za-z0-9_-]+/g, " ")
-    .replace(/\b[IP]?Builds?[A-Za-z0-9_-]+/g, " ")
-    .replace(/\bTypeScriptg?typecheck(?:ing)?\b/gi, "TypeScript typecheck")
-    .replace(/\[(?:step|session|message|part|text|reasoning|tool)-[^\]]+\]\s*/gi, "")
-    .replace(/\[(?:step-start|step-finish)\]\s*/gi, "")
-    .replace(/```[^`]*```/g, "")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/(?:^|\s)-\s+/g, " ")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .trim();
-}
-
-function cleanTranscriptText(input: unknown): string {
-  return cleanPreviewText(input)
-    .replace(/(?:Changed|Changes|Verified):\s*/g, "\n$&")
-    .replace(/\s+-\s+/g, "\n- ")
-    .replace(/\s+(?=\d+\.\s)/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-function partText(part: any): string {
-  if (!part || typeof part !== "object") return "";
-  const type = typeof part.type === "string" ? part.type : "";
-  if (type && /^(step-|reasoning|tool|agent-|model-|session-|message-|part-)/i.test(type)) return "";
-  if (typeof part.text === "string") return cleanPreviewText(part.text);
-  if (typeof part.content === "string") return cleanPreviewText(part.content);
-  if (typeof part.summary === "string") return cleanPreviewText(part.summary);
-  return "";
-}
-
-function partActivity(part: any): string {
-  if (!part || typeof part !== "object") return "";
-  if (part.type !== "tool") return "";
-
-  const status = typeof part.state?.status === "string" ? part.state.status : "running";
-  const title = cleanPreviewText(part.state?.title);
-  const toolName = typeof part.tool === "string" ? part.tool : "tool";
-  const running = status === "running" || status === "pending";
-
-  if (title) return title;
-  if (toolName === "apply_patch") return running ? "Editing files" : "Edited files";
-  if (toolName === "bash") return running ? "Running command" : "Ran command";
-  if (toolName === "read") return running ? "Reading file" : "Read file";
-  if (toolName === "grep") return running ? "Searching" : "Searched";
-  if (toolName === "glob") return running ? "Scanning files" : "Scanned files";
-  if (toolName === "webfetch") return running ? "Fetching page" : "Fetched page";
-  if (toolName === "task") return running ? "Delegating task" : "Delegated task";
-  return running ? "Working" : "Updated";
-}
-
-function entrySpeaker(entry: any): string {
-  const role = entry?.info?.role ?? entry?.role ?? entry?.type;
-  if (role === "user") return "You";
-  if (role === "assistant") return "Agent";
-  if (role === "synthetic") return "Note";
-  return "";
-}
-
-function previewPrefix(speaker?: string): string {
-  if (speaker === "You") return "👤 ";
-  if (speaker === "Note") return "→ ";
-  return "";
-}
-
-function visibleTurn(entry: any): TranscriptTurn | undefined {
-  const parts = Array.isArray(entry?.content)
-    ? entry.content
-    : Array.isArray(entry?.parts)
-      ? entry.parts
-      : Array.isArray(entry?.info?.parts)
-        ? entry.info.parts
-        : [];
-  const fromParts = compactText(parts.map(partText).filter(Boolean).join(" "));
-  if (fromParts) return { speaker: entrySpeaker(entry), text: cleanTranscriptText(fromParts) };
-
-  const activity = compactText(parts.map(partActivity).filter(Boolean).join(" / "));
-  if (activity) return { speaker: entrySpeaker(entry), text: cleanTranscriptText(activity) };
-
-  const entryType = typeof entry?.type === "string" ? entry.type : "";
-  if (entryType && /^(step-|reasoning|tool|agent-|model-|session-|message-|part-)/i.test(entryType)) return undefined;
-
-  const fromInfo = cleanPreviewText(entry?.info?.text ?? entry?.text ?? entry?.content ?? entry?.summary ?? entry?.command ?? entry?.output);
-  if (fromInfo) return { speaker: entrySpeaker(entry), text: cleanTranscriptText(fromInfo) };
-  return undefined;
-}
-
-function messageTime(entry: any): number {
-  return displayTime(entry?.time?.created ?? entry?.time?.updated ?? entry?.info?.time?.created ?? entry?.createdAt ?? entry?.created_at) ?? 0;
-}
-
-function orderedMessages(messages: any[]): any[] {
-  return [...messages].sort((a, b) => messageTime(a) - messageTime(b));
-}
-
-function sessionTranscript(messages: any[]): TranscriptTurn[] {
-  return messages.map(visibleTurn).filter(Boolean).slice(-8) as TranscriptTurn[];
-}
-
-function latestTurnText(messages: any[]): string {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const turn = visibleTurn(messages[i]);
-    if (turn) return `${previewPrefix(turn.speaker)}${compactText(turn.text)}`;
-  }
-
-  return "No assistant reply yet";
 }
 
 async function loadSessionTranscript(client: any, sessionID: string): Promise<{ id: string; preview: string; transcript: TranscriptTurn[] }> {
