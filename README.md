@@ -7,7 +7,7 @@ OpenCode Threads adds a `/threads` view for managing sessions and a `spawn_threa
 ## Features
 
 - `/threads` opens a session/thread manager in the OpenCode TUI.
-- `n` creates a new session draft at the top of the list.
+- `n` prompts for a new session without leaving the thread manager.
 - `r` focuses the bottom prompt dock for the selected session.
 - `enter` attaches to the selected session.
 - `delete` asks before permanently deleting a session.

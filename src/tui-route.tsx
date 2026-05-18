@@ -11,7 +11,6 @@ import { loadSessions, loadSessionTranscript } from "./tui-loader";
 import { padCell, rowActionHint, rowPreviewColor, rowStatusText, rowTime, rowTimeColor, rowTitle, rowTitleColor, statusColor, truncate } from "./tui-format";
 
 const activeSessionIDs = new Set<string>();
-const draftSessionID = "__opencode-threads-draft__";
 
 export type AgentViewRouteProps = {
   api: TuiPluginApi;
@@ -28,7 +27,6 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
   const [liveFrame, setLiveFrame] = createSignal(0);
   const [timeTick, setTimeTick] = createSignal(0);
   const [promptOpen, setPromptOpen] = createSignal(false);
-  const [draftPromptOpen, setDraftPromptOpen] = createSignal(false);
   const [optimisticSession, setOptimisticSession] = createSignal<AgentSession>();
   const [sessions, { refetch }] = createResource(refreshKey, () => loadSessions(props.api));
   const theme = () => props.api.theme.current;
@@ -36,21 +34,6 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
     const rows = [ ...(((sessions as any).latest ?? sessions() ?? []) as AgentSession[]) ];
     const optimistic = optimisticSession();
     if (optimistic && !rows.some((row) => row.id === optimistic.id)) rows.unshift(optimistic);
-    if (draftPromptOpen()) {
-      rows.unshift({
-        id: draftSessionID,
-        draft: true,
-        title: "New session",
-        status: "draft",
-        statusTone: "waiting",
-        preview: "Type a prompt below to start a new thread.",
-        transcript: [],
-        updatedAt: Date.now(),
-        loadedAt: Date.now(),
-        waitingCount: 0,
-        depth: 0,
-      });
-    }
     return rows;
   });
   const groups = createMemo(() => groupThreadRows(visibleSessions(), activeSessionIDs));
@@ -69,7 +52,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
   const selectedID = createMemo(() => selected()?.id);
   const [selectedTranscript, { refetch: refetchSelectedTranscript }] = createResource(
     () => ({ id: selectedID(), key: selectedRefreshKey() }),
-    async ({ id }) => (id && id !== draftSessionID ? loadSessionTranscript(props.api.client, id) : undefined),
+    async ({ id }) => (id ? loadSessionTranscript(props.api.client, id) : undefined),
   );
   const selectedPeek = createMemo(() => {
     const row = selected();
@@ -92,35 +75,40 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
     promptRef?.blur();
     promptRef?.reset();
     setPromptOpen(false);
-    setDraftPromptOpen(false);
-    if (selectedID() === draftSessionID) setSelectedSessionID(undefined);
     scroll?.focus();
   };
 
   const replyInline = () => {
-    setDraftPromptOpen(false);
     setPromptOpen(true);
     queueMicrotask(() => promptRef?.focus());
   };
 
   const newAgent = () => {
-    setPromptOpen(true);
-    setDraftPromptOpen(true);
-    setSelectedSessionID(draftSessionID);
-    setSelectedIndex(0);
-    queueMicrotask(() => promptRef?.focus());
+    props.api.ui.dialog.replace(() => (
+      <props.api.ui.DialogPrompt
+        title="New thread"
+        placeholder="Start a new thread..."
+        onCancel={() => props.api.ui.dialog.clear()}
+        onConfirm={(value) => {
+          const prompt = compactText(value);
+          if (!prompt) return;
+          props.api.ui.dialog.clear();
+          void submitDraft(prompt);
+        }}
+      />
+    ));
   };
 
-  const submitDraft = async () => {
-    const prompt = compactText(promptRef?.current.input);
+  const submitDraft = async (input: string) => {
+    const prompt = compactText(input);
     if (!prompt) return;
 
     const now = Date.now();
+    const previousSessionID = selected()?.draft ? undefined : selected()?.id;
     const gateway = new SessionGateway(props.api.client);
     promptRef?.blur();
     promptRef?.reset();
     setPromptOpen(false);
-    setDraftPromptOpen(false);
 
     const { id: sessionID } = await gateway.create(truncate(prompt, 80));
     const optimistic: AgentSession = {
@@ -137,8 +125,8 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
     };
     activeSessionIDs.add(sessionID);
     setOptimisticSession(optimistic);
-    setSelectedSessionID(sessionID);
-    setSelectedIndex(0);
+    if (previousSessionID) setSelectedSessionID(previousSessionID);
+    else setSelectedSessionID(sessionID);
     scroll?.focus();
 
     await gateway.sendPrompt(sessionID, prompt);
@@ -271,7 +259,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
     selectedID();
     promptRef?.blur();
     promptRef?.reset();
-    if (!draftPromptOpen()) setPromptOpen(false);
+    setPromptOpen(false);
     refreshSelected();
   });
 
@@ -378,7 +366,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
 
                 <box flexDirection="column" gap={1}>
                   <text fg={theme().textMuted} wrapMode="word">
-                    {row.draft ? "New session" : "Press r to reply"}
+                    Press r to reply
                   </text>
                 </box>
 
@@ -394,20 +382,16 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
                         backgroundColor={theme().backgroundElement}
                       >
                         <text fg={theme().textMuted} wrapMode="none">
-                          {row.draft ? "Start a new thread..." : "Reply to this thread..."}
+                          Reply to this thread...
                         </text>
                       </box>
                     )}
                   >
                     <props.api.ui.Prompt
-                      sessionID={row.draft ? undefined : row.id}
+                      sessionID={row.id}
                       visible
                       ref={(ref) => (promptRef = ref)}
                       onSubmit={() => {
-                        if (row.draft) {
-                          void submitDraft();
-                          return;
-                        }
                         promptRef?.blur();
                         setPromptOpen(false);
                         scroll?.focus();
@@ -415,7 +399,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
                         refresh();
                       }}
                       showPlaceholder
-                      placeholders={{ normal: [row.draft ? "Start a new thread..." : "Reply to this thread..."] }}
+                      placeholders={{ normal: ["Reply to this thread..."] }}
                     />
                   </Show>
                 </box>
