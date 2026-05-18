@@ -25,7 +25,7 @@ export type ThreadKeyboardHandlers = {
 export function handleThreadKeyboard(evt: ThreadKeyboardEvent, handlers: ThreadKeyboardHandlers) {
   if (evt.defaultPrevented || handlers.dialogOpen()) return;
 
-  if (evt.name === "escape" || (evt.ctrl && evt.name === "c")) {
+  if (evt.name === "escape") {
     prevent(evt);
     if (handlers.promptOpen()) {
       handlers.closePrompt();
@@ -34,6 +34,8 @@ export function handleThreadKeyboard(evt: ThreadKeyboardEvent, handlers: ThreadK
     handlers.goBack();
     return;
   }
+
+  if (evt.ctrl || evt.meta || evt.super) return;
 
   if (handlers.promptOpen()) return;
 

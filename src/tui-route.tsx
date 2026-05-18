@@ -2,7 +2,6 @@
 
 import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core";
 import type { TuiPluginApi, TuiPromptRef } from "@opencode-ai/plugin/tui";
-import { useKeyboard } from "@opentui/solid";
 import { createEffect, createMemo, createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { compactText } from "./message-normalizer";
 import { SessionGateway } from "./session-gateway";
@@ -209,7 +208,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
     else props.api.route.navigate("home");
   };
 
-  useKeyboard((evt) => handleThreadKeyboard(evt, {
+  const onThreadKeyDown = (evt: Parameters<typeof handleThreadKeyboard>[0]) => handleThreadKeyboard(evt, {
     dialogOpen: () => props.api.ui.dialog.open,
     promptOpen,
     closePrompt,
@@ -221,7 +220,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
     abortSelected: () => void abortSelected(),
     archiveSelected: () => void archiveSelected(),
     deleteSelected: () => void deleteSelected(),
-  }));
+  });
 
   onMount(() => {
     for (const row of visibleSessions()) {
@@ -295,6 +294,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
           minHeight={0}
           flexGrow={1}
           focusable
+          onKeyDown={onThreadKeyDown}
           scrollbarOptions={{ visible: false }}
         >
           <box flexDirection="column" width="100%">
