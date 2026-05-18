@@ -5,6 +5,7 @@ import type { TuiPlugin, TuiPluginApi, TuiPluginModule, TuiPromptRef } from "@op
 import { useKeyboard } from "@opentui/solid";
 import { createEffect, createMemo, createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { compactText, displayTime, latestTurnText, orderedMessages, sessionTranscript, type TranscriptTurn } from "./message-normalizer";
+import { SessionGateway } from "./session-gateway";
 import { readThreadRelations } from "./thread-relations";
 
 const id = "opencode.threads";
@@ -41,11 +42,6 @@ type AgentViewRouteProps = {
   fromSessionID?: string;
 };
 
-function unwrap<T>(result: T | { data?: T }): T {
-  if (result && typeof result === "object" && "data" in result) return (result as { data?: T }).data as T;
-  return result as T;
-}
-
 function relativeTime(value?: number, now = Date.now()): string {
   if (!value) return "unknown";
   const seconds = Math.max(0, Math.round((now - value) / 1000));
@@ -58,31 +54,19 @@ function relativeTime(value?: number, now = Date.now()): string {
 }
 
 async function loadSessionTranscript(client: any, sessionID: string): Promise<{ id: string; preview: string; transcript: TranscriptTurn[] }> {
-  const sessionApi = client.session as any;
   try {
-    const result = await sessionApi.messages?.({ sessionID, limit: 48 });
-    const payload = unwrap<any[] | { items?: any[] }>(result);
-    const messages = orderedMessages(Array.isArray(payload) ? payload : payload?.items ?? []);
+    const messages = orderedMessages(await new SessionGateway(client).messages(sessionID, 48));
     const transcript = sessionTranscript(messages);
-    if (transcript.length > 0) return { id: sessionID, preview: latestTurnText(messages), transcript };
-  } catch {
-    // Fall through to v2 if the legacy transcript endpoint is unavailable.
-  }
-
-  try {
-    const result = await client.v2?.session?.messages?.({ sessionID, limit: 48, order: "desc" });
-    const payload = unwrap<any[] | { items?: any[] }>(result);
-    const ordered = orderedMessages(Array.isArray(payload) ? payload : payload?.items ?? []);
-    return { id: sessionID, preview: latestTurnText(ordered), transcript: sessionTranscript(ordered) };
+    return { id: sessionID, preview: latestTurnText(messages), transcript };
   } catch {
     return { id: sessionID, preview: "Preview unavailable.", transcript: [] };
   }
 }
 
 async function loadSessions(api: TuiPluginApi): Promise<AgentSession[]> {
-  const sessionApi = api.client.session as any;
-  const rawSessions = unwrap<any[]>(await sessionApi.list()) ?? [];
-  const statusMap = unwrap<Record<string, any>>(await sessionApi.status?.().catch(() => ({}))) ?? {};
+  const gateway = new SessionGateway(api.client);
+  const rawSessions = await gateway.list();
+  const statusMap = await gateway.status();
   const relations = await readThreadRelations();
   const loadedAt = Date.now();
 
@@ -399,14 +383,13 @@ function AgentViewRoute(props: AgentViewRouteProps) {
     if (!prompt) return;
 
     const now = Date.now();
-    const sessionApi = props.api.client.session as any;
+    const gateway = new SessionGateway(props.api.client);
     promptRef?.blur();
     promptRef?.reset();
     setPromptOpen(false);
     setDraftPromptOpen(false);
 
-    const created = unwrap<any>(await sessionApi.create({ title: truncate(prompt, 80) }));
-    const sessionID = String(created.id);
+    const { id: sessionID } = await gateway.create(truncate(prompt, 80));
     const optimistic: AgentSession = {
       id: sessionID,
       title: truncate(prompt, 80),
@@ -425,7 +408,7 @@ function AgentViewRoute(props: AgentViewRouteProps) {
     setSelectedIndex(0);
     scroll?.focus();
 
-    await sendPrompt(sessionApi, sessionID, prompt);
+    await gateway.sendPrompt(sessionID, prompt);
     props.api.ui.toast({ variant: "success", message: "Thread started." });
     refreshSelected();
     refresh();
@@ -434,8 +417,7 @@ function AgentViewRoute(props: AgentViewRouteProps) {
   const abortSelected = async () => {
     const row = selected();
     if (!row) return;
-    const sessionApi = props.api.client.session as any;
-    await sessionApi.abort?.({ sessionID: row.id });
+    await new SessionGateway(props.api.client).abort(row.id);
     props.api.ui.toast({ variant: "warning", message: "Abort requested." });
     refresh();
   };
@@ -450,8 +432,7 @@ function AgentViewRoute(props: AgentViewRouteProps) {
         onCancel={() => props.api.ui.dialog.clear()}
         onConfirm={async () => {
           props.api.ui.dialog.clear();
-          const sessionApi = props.api.client.session as any;
-          await sessionApi.delete?.({ sessionID: row.id });
+          await new SessionGateway(props.api.client).delete(row.id);
           activeSessionIDs.delete(row.id);
           setSelectedSessionID(undefined);
           setSelectedIndex((index) => Math.max(0, index - 1));
@@ -466,12 +447,7 @@ function AgentViewRoute(props: AgentViewRouteProps) {
     const row = selected();
     if (!row || row.draft) return;
 
-    const sessionApi = props.api.client.session as any;
-    try {
-      await sessionApi.update?.({ sessionID: row.id, time: { archived: Date.now() } });
-    } catch {
-      await sessionApi.update?.({ path: { id: row.id }, body: { time: { archived: Date.now() } } });
-    }
+    await new SessionGateway(props.api.client).archive(row.id);
     activeSessionIDs.delete(row.id);
     setSelectedSessionID(undefined);
     setSelectedIndex((index) => Math.max(0, index - 1));
@@ -773,19 +749,6 @@ function AgentViewRoute(props: AgentViewRouteProps) {
       </box>
     </box>
   );
-}
-
-async function sendPrompt(sessionApi: any, sessionID: string, text: string) {
-  const parts = [{ type: "text", text }];
-  if (typeof sessionApi.promptAsync === "function") {
-    await sessionApi.promptAsync({ sessionID, parts });
-    return;
-  }
-  if (typeof sessionApi.prompt_async === "function") {
-    await sessionApi.prompt_async({ sessionID, parts });
-    return;
-  }
-  await sessionApi.prompt({ sessionID, parts });
 }
 
 const tui: TuiPlugin = async (api) => {

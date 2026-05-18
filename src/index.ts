@@ -1,6 +1,7 @@
 import { tool, type Plugin } from "@opencode-ai/plugin";
 import { buildCoordinatorPrompt } from "./coordinator-prompt";
 import { coordinatorContextLines, orderedMessages } from "./message-normalizer";
+import { SessionGateway } from "./session-gateway";
 import { readThreadRelations, writeThreadRelations } from "./thread-relations";
 
 const THREADS_COMMAND = "threads";
@@ -10,105 +11,12 @@ type SpawnThreadInput = {
   prompt: string;
 };
 
-function unwrap<T>(result: T | { data?: T }): T {
-  if (result && typeof result === "object" && "data" in result) return (result as { data?: T }).data as T;
-  return result as T;
-}
-
-async function currentSessionContext(sessionApi: any, sessionID: string): Promise<string> {
+async function currentSessionContext(gateway: SessionGateway, sessionID: string): Promise<string> {
   try {
-    let result: unknown;
-    try {
-      result = await sessionApi.messages?.({ path: { id: sessionID }, query: { limit: 24 } });
-    } catch {
-      result = await sessionApi.messages?.({ sessionID, limit: 24 });
-    }
-    const payload = unwrap<any[] | { items?: any[] }>(result as any);
-    const messages = orderedMessages(Array.isArray(payload) ? payload : payload?.items ?? []);
+    const messages = orderedMessages(await gateway.contextMessages(sessionID, 24));
     return coordinatorContextLines(messages).join("\n");
   } catch {
     return "";
-  }
-}
-
-function sessionID(session: any): string | undefined {
-  const id = session?.id ?? session?.data?.id;
-  return typeof id === "string" && id ? id : undefined;
-}
-
-async function updateThreadTitle(sessionApi: any, sessionID: string, title: string) {
-  const safeTitle = title.slice(0, 120);
-
-  try {
-    await sessionApi.update?.({ path: { id: sessionID }, body: { title: safeTitle } });
-  } catch {
-    await sessionApi.update?.({ sessionID, title: safeTitle });
-  }
-}
-
-async function createThreadSession(sessionApi: any, title: string, sourceSessionID: string) {
-  const safeTitle = title.slice(0, 120);
-
-  if (typeof sessionApi.fork === "function") {
-    for (const payload of [
-      { path: { id: sourceSessionID }, body: {} },
-      { path: { sessionID: sourceSessionID }, body: {} },
-      { sessionID: sourceSessionID },
-    ]) {
-      try {
-        const session = unwrap<any>(await sessionApi.fork(payload));
-        const id = sessionID(session);
-        if (!id) continue;
-        await updateThreadTitle(sessionApi, id, safeTitle);
-        return session;
-      } catch {
-        // Try the next SDK shape before falling back to creating a fresh root session.
-      }
-    }
-  }
-
-  try {
-    return unwrap<any>(await sessionApi.create({ body: { title: safeTitle } }));
-  } catch {
-    return unwrap<any>(await sessionApi.create({ title: safeTitle }));
-  }
-}
-
-async function sendPrompt(sessionApi: any, sessionID: string, prompt: string) {
-  const body = {
-    parts: [{ type: "text", text: prompt }],
-  };
-  const legacyPayload = {
-    path: { id: sessionID },
-    body,
-  };
-  const flatPayload = {
-    sessionID,
-    ...body,
-  };
-
-  if (typeof sessionApi.promptAsync === "function") {
-    try {
-      await sessionApi.promptAsync(legacyPayload);
-    } catch {
-      await sessionApi.promptAsync(flatPayload);
-    }
-    return;
-  }
-
-  if (typeof sessionApi.prompt_async === "function") {
-    try {
-      await sessionApi.prompt_async(legacyPayload);
-    } catch {
-      await sessionApi.prompt_async(flatPayload);
-    }
-    return;
-  }
-
-  try {
-    await sessionApi.prompt(legacyPayload);
-  } catch {
-    await sessionApi.prompt(flatPayload);
   }
 }
 
@@ -120,8 +28,8 @@ const AgentViewPlugin: Plugin = async ({ client }) => {
       const request = input.arguments.trim();
       if (!request) return;
 
-      const sessionApi = (client as any).session;
-      const context = await currentSessionContext(sessionApi, input.sessionID);
+      const gateway = new SessionGateway(client);
+      const context = await currentSessionContext(gateway, input.sessionID);
 
       output.parts = [
         {
@@ -144,16 +52,14 @@ const AgentViewPlugin: Plugin = async ({ client }) => {
           ),
         },
         async execute(args: { threads: SpawnThreadInput[] }, context) {
-          const sessionApi = (client as any).session;
+          const gateway = new SessionGateway(client);
           const created: Array<{ id: string; title: string }> = [];
           const relations = await readThreadRelations();
 
           for (const thread of args.threads) {
-            const session = await createThreadSession(sessionApi, thread.title, context.sessionID);
-            const id = sessionID(session);
-            if (!id) throw new Error(`Failed to create thread session for ${thread.title}`);
+            const { id } = await gateway.createOrFork(thread.title, context.sessionID);
             relations[id] = context.sessionID;
-            await sendPrompt(sessionApi, id, thread.prompt);
+            await gateway.sendPrompt(id, thread.prompt);
             created.push({ id, title: thread.title });
           }
 
