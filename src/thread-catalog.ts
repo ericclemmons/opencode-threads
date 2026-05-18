@@ -121,7 +121,7 @@ export function groupThreadRows(rows: readonly AgentSession[], activeSessionIDs:
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
   const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
 
-  const today = previous.filter((row) => (row.updatedAt ?? 0) >= startOfToday);
+  const today = [...active, ...previous.filter((row) => (row.updatedAt ?? 0) >= startOfToday)];
   const yesterday = previous.filter((row) => (row.updatedAt ?? 0) >= startOfYesterday && (row.updatedAt ?? 0) < startOfToday);
   const thisWeek = previous.filter((row) => (row.updatedAt ?? 0) >= startOfWeek && (row.updatedAt ?? 0) < startOfYesterday);
   const lastWeek = previous.filter((row) => (row.updatedAt ?? 0) >= startOfLastWeek && (row.updatedAt ?? 0) < startOfWeek);
@@ -132,7 +132,6 @@ export function groupThreadRows(rows: readonly AgentSession[], activeSessionIDs:
   const withChildren = (groupRows: AgentSession[]) => groupRows.flatMap((row) => [row, ...descendants(row)]);
 
   return [
-    { title: "Active", rows: withChildren(active) },
     { title: "Today", rows: withChildren(today) },
     { title: "Yesterday", rows: withChildren(yesterday) },
     { title: "This week", rows: withChildren(thisWeek) },

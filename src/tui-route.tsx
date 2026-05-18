@@ -304,9 +304,6 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
                   <box flexDirection="column" paddingTop={1}>
                     <box flexDirection="row" gap={1}>
                       <text fg={theme().textMuted} attributes={TextAttributes.BOLD}>{group.title}</text>
-                      <Show when={group.title === "Active" && sessions.loading && visibleSessions().length > 0}>
-                        <text fg={theme().textMuted}>◌</text>
-                      </Show>
                     </box>
                     <For each={group.rows}>
                       {(row) => {
