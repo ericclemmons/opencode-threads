@@ -317,6 +317,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
                           <box
                             id={`thread-row-${row.id}`}
                             flexDirection="row"
+                            width="100%"
                             gap={3}
                             paddingLeft={1}
                             paddingRight={1}
@@ -337,9 +338,11 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
                             </text>
                             <text
                               fg={rowPreviewColor(theme(), row, selectedRow())}
+                              flexGrow={1}
+                              minWidth={0}
                               wrapMode="none"
                             >
-                              {padCell(rowActionHint(row, selectedRow(), preview()), 72)}
+                              {rowActionHint(row, selectedRow(), preview())}
                             </text>
                             <text fg={rowTimeColor(theme(), selectedRow())} wrapMode="none">
                               {rowTime(row, timeTick())}
