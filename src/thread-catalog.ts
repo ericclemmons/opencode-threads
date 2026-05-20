@@ -32,7 +32,7 @@ export type BuildThreadRowsInput = {
 
 export async function buildThreadRows(input: BuildThreadRowsInput): Promise<AgentSession[]> {
   const rows = await Promise.all(
-    input.rawSessions.filter((session) => !isHiddenSubAgentSession(session)).map(async (session) => {
+    input.rawSessions.filter((session) => !isArchivedSession(session) && !isHiddenSubAgentSession(session)).map(async (session) => {
       const sessionID = String(session.id);
       const sdkStatus = input.statusMap[sessionID];
       const waitingCount = input.getWaitingCount(sessionID);
@@ -140,6 +140,10 @@ export function groupThreadRows(rows: readonly AgentSession[], activeSessionIDs:
     { title: "Last month", rows: withChildren(lastMonth) },
     { title: "Older", rows: withChildren(older) },
   ].filter((group) => group.rows.length > 0);
+}
+
+export function isArchivedSession(session: any): boolean {
+  return typeof session?.time?.archived === "number";
 }
 
 export function isHiddenSubAgentSession(session: any): boolean {

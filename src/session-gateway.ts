@@ -8,6 +8,16 @@ export function unwrap<T>(result: T | { data?: T }): T {
   return result as T;
 }
 
+function resultError(result: unknown): unknown {
+  if (!result || typeof result !== "object" || !("error" in result)) return undefined;
+  return (result as { error?: unknown }).error;
+}
+
+function archivedAt(session: any): number | undefined {
+  const archived = session?.time?.archived;
+  return typeof archived === "number" ? archived : undefined;
+}
+
 export function sessionID(session: any): string | undefined {
   const id = session?.id ?? session?.data?.id;
   return typeof id === "string" && id ? id : undefined;
@@ -22,10 +32,12 @@ function requireSessionID(session: any, action: string): string {
 export class SessionGateway {
   readonly session: any;
   readonly v2Session: any;
+  readonly usesFlatParams: boolean;
 
   constructor(clientOrSessionApi: SessionGatewayClient | any) {
     this.session = clientOrSessionApi?.session ?? clientOrSessionApi;
     this.v2Session = clientOrSessionApi?.v2?.session;
+    this.usesFlatParams = typeof this.session?.create === "function" && this.session.create.length > 1;
   }
 
   async list(): Promise<any[]> {
@@ -64,13 +76,28 @@ export class SessionGateway {
 
   async create(title: string): Promise<{ id: string; session: any }> {
     const safeTitle = title.slice(0, 120);
-    let session: any;
-    try {
-      session = unwrap<any>(await this.session.create({ body: { title: safeTitle } }));
-    } catch {
-      session = unwrap<any>(await this.session.create({ title: safeTitle }));
+    const payloads = this.usesFlatParams
+      ? [{ title: safeTitle }, { body: { title: safeTitle } }]
+      : [{ body: { title: safeTitle } }, { title: safeTitle }];
+
+    let lastError: unknown;
+    for (const payload of payloads) {
+      try {
+        const result = await this.session.create(payload);
+        const error = resultError(result);
+        if (error) {
+          lastError = error;
+          continue;
+        }
+
+        const session = unwrap<any>(result);
+        return { id: requireSessionID(session, "create"), session };
+      } catch (error) {
+        lastError = error;
+      }
     }
-    return { id: requireSessionID(session, "create"), session };
+
+    throw lastError;
   }
 
   async createOrFork(title: string, sourceSessionID: string): Promise<{ id: string; session: any }> {
@@ -118,30 +145,52 @@ export class SessionGateway {
       sessionID,
       ...body,
     };
+    const payloads = this.usesFlatParams
+      ? [flatPayload, legacyPayload]
+      : [legacyPayload, flatPayload];
 
     if (typeof this.session.promptAsync === "function") {
-      try {
-        await this.session.promptAsync(legacyPayload);
-      } catch {
-        await this.session.promptAsync(flatPayload);
+      let lastError: unknown;
+      for (const payload of payloads) {
+        try {
+          const result = await this.session.promptAsync(payload);
+          const error = resultError(result);
+          if (!error) return;
+          lastError = error;
+        } catch (error) {
+          lastError = error;
+        }
       }
-      return;
+      throw lastError;
     }
 
     if (typeof this.session.prompt_async === "function") {
-      try {
-        await this.session.prompt_async(legacyPayload);
-      } catch {
-        await this.session.prompt_async(flatPayload);
+      let lastError: unknown;
+      for (const payload of payloads) {
+        try {
+          const result = await this.session.prompt_async(payload);
+          const error = resultError(result);
+          if (!error) return;
+          lastError = error;
+        } catch (error) {
+          lastError = error;
+        }
       }
-      return;
+      throw lastError;
     }
 
-    try {
-      await this.session.prompt(legacyPayload);
-    } catch {
-      await this.session.prompt(flatPayload);
+    let lastError: unknown;
+    for (const payload of payloads) {
+      try {
+        const result = await this.session.prompt(payload);
+        const error = resultError(result);
+        if (!error) return;
+        lastError = error;
+      } catch (error) {
+        lastError = error;
+      }
     }
+    throw lastError;
   }
 
   async abort(sessionID: string) {
@@ -153,10 +202,29 @@ export class SessionGateway {
   }
 
   async archive(sessionID: string) {
-    try {
-      await this.session.update?.({ sessionID, time: { archived: Date.now() } });
-    } catch {
-      await this.session.update?.({ path: { id: sessionID }, body: { time: { archived: Date.now() } } });
+    const archived = Date.now();
+    let lastError: unknown;
+
+    for (const payload of [
+      { sessionID, time: { archived } },
+      { path: { id: sessionID }, body: { time: { archived } } },
+    ]) {
+      try {
+        const result = await this.session.update?.(payload);
+        const error = resultError(result);
+        if (error) {
+          lastError = error;
+          continue;
+        }
+
+        const session = unwrap<any>(result);
+        if (archivedAt(session)) return;
+        lastError = new Error("archive did not return an archived session");
+      } catch (error) {
+        lastError = error;
+      }
     }
+
+    throw lastError;
   }
 }
