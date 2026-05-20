@@ -26,14 +26,11 @@ const tui: TuiPlugin = async (api) => {
       },
     },
     {
-      title: "Archive Thread",
-      value: "threads.archive-current",
+      title: "Archive Session",
+      value: "session.archive-current",
       description: "Archive the current session and open threads",
-      category: "Plugin",
-      slash: { name: "archive-thread" },
-      enabled:
-        api.route.current.name === "session"
-        && typeof api.route.current.params?.sessionID === "string",
+      category: "Utility",
+      slash: { name: "archive-thread", aliases: ["archive-session", "archive-thead"] },
       onSelect: async () => {
         const current = api.route.current;
         const sessionID = current.name === "session" ? current.params?.sessionID : undefined;
@@ -43,9 +40,13 @@ const tui: TuiPlugin = async (api) => {
           return;
         }
 
-        await new SessionGateway(api.client).archive(sessionID);
-        api.ui.toast({ variant: "warning", message: "Session archived." });
-        api.route.navigate(routeName);
+        try {
+          await new SessionGateway(api.client).archive(sessionID);
+          api.ui.toast({ variant: "warning", message: "Session archived." });
+          api.route.navigate(routeName);
+        } catch {
+          api.ui.toast({ variant: "error", message: "Session archive failed." });
+        }
       },
     },
   ]);
@@ -57,6 +58,7 @@ const tui: TuiPlugin = async (api) => {
         <AgentViewRoute
           api={api}
           fromSessionID={typeof params?.fromSessionID === "string" ? params.fromSessionID : undefined}
+          selectedSessionID={typeof params?.selectedSessionID === "string" ? params.selectedSessionID : undefined}
         />
       ),
     },

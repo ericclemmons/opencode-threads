@@ -8,11 +8,12 @@ OpenCode Threads adds a `/threads` view for managing sessions and a `spawn_threa
 
 - `/threads` opens a session/thread manager in the OpenCode TUI.
 - `n` prompts for a new session without leaving the thread manager.
-- `space` toggles a peek view for the selected session's chat transcript.
 - `r` focuses the bottom prompt dock for the selected session.
 - `enter` attaches to the selected session.
 - `delete` asks before permanently deleting a session.
 - `cmd+delete` archives a session immediately.
+- `/archive-thread` archives the current session and returns to `/threads`.
+- `/archive-session` is an alias for `/archive-thread`.
 - `/threads <request>` injects a coordinator prompt that identifies N items and creates N user-continuable sessions.
 - Spawned sessions are visually nested with a UI-only relation map until OpenCode exposes native enterable thread nesting.
 
@@ -73,6 +74,8 @@ TUI plugin config:
 
 - `/threads`: open the thread manager.
 - `/threads <request>`: ask the coordinator to split a multi-item request into one session per item.
+- `/archive-thread`: archive the current session and open the thread manager.
+- `/archive-session`: alias for `/archive-thread`.
 
 Example:
 
