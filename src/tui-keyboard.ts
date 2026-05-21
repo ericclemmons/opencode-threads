@@ -35,9 +35,19 @@ export function handleThreadKeyboard(evt: ThreadKeyboardEvent, handlers: ThreadK
     return;
   }
 
-  if (evt.ctrl || evt.meta || evt.super) return;
-
   if (handlers.promptOpen()) return;
+
+  if (evt.name === "delete" || evt.name === "backspace") {
+    prevent(evt);
+    if (evt.meta || evt.super) {
+      handlers.archiveSelected();
+      return;
+    }
+    if (!evt.ctrl) handlers.deleteSelected();
+    return;
+  }
+
+  if (evt.ctrl || evt.meta || evt.super) return;
 
   if (evt.name === "r") {
     prevent(evt);
@@ -75,14 +85,6 @@ export function handleThreadKeyboard(evt: ThreadKeyboardEvent, handlers: ThreadK
     return;
   }
 
-  if (evt.name === "delete" || evt.name === "backspace") {
-    prevent(evt);
-    if (evt.meta || evt.super) {
-      handlers.archiveSelected();
-      return;
-    }
-    handlers.deleteSelected();
-  }
 }
 
 function prevent(evt: ThreadKeyboardEvent) {

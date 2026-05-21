@@ -25,7 +25,8 @@
   },
   "scripts": {
     "build": "bun run scripts/build.ts",
-    "typecheck": "tsc -p tsconfig.json",
+    "test": "bun test --preload @opentui/solid/preload test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepare": "npm run build",
     "prepack": "npm run build"
   },
