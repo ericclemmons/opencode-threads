@@ -12,7 +12,7 @@ const theme = {
   warning: "#ffcc66",
 };
 
-function api() {
+function api(options: { sessions?: any[]; blockRefresh?: boolean } = {}) {
   const navigations: Array<[string, unknown]> = [];
   const listeners: string[] = [];
   const createdTitles: string[] = [];
@@ -21,16 +21,22 @@ function api() {
   const listenerHandlers: Record<string, (event: any) => void> = {};
   const promptRefs: Array<{ current: { input: string; parts: any[] }; resets: number }> = [];
   let keyHandler: ((input: any) => void) | undefined;
+  let listCalls = 0;
+  const sessions = options.sessions ?? [
+    { id: "parent", title: "Parent thread", time: { updated: Date.parse("2026-05-20T12:00:00Z") } },
+    { id: "child", parentID: "parent", title: "Child thread", time: { updated: Date.parse("2026-05-20T12:01:00Z") } },
+  ];
 
   return {
     api: {
       theme: { current: theme },
       client: {
         session: {
-          list: async () => [
-            { id: "parent", title: "Parent thread", time: { updated: Date.parse("2026-05-20T12:00:00Z") } },
-            { id: "child", parentID: "parent", title: "Child thread", time: { updated: Date.parse("2026-05-20T12:01:00Z") } },
-          ],
+          list: async () => {
+            listCalls++;
+            if (options.blockRefresh && listCalls > 1) await new Promise(() => {});
+            return sessions;
+          },
           create: async ({ body }: { body: { title: string } }) => {
             createdTitles.push(body.title);
             return { id: "new-thread", title: body.title, time: { updated: Date.parse("2026-05-20T12:03:00Z") } };
@@ -172,9 +178,29 @@ describe("AgentViewRoute rendered output", () => {
       expect(setupApi.createdTitles).toEqual(["New thread"]);
       expect(setupApi.updatedTitles).toEqual(["Pasted line 1"]);
       expect(setupApi.promptCalls).toEqual([
-        { sessionID: "new-thread", parts: [{ type: "text", text: "Pasted line 1\nPasted line 2" }] },
+        { path: { id: "new-thread" }, body: { parts: [{ type: "text", text: "Pasted line 1\nPasted line 2" }] } },
       ]);
       expect(setupApi.navigations).toEqual([]);
+    } finally {
+      setup.renderer.destroy();
+    }
+  });
+
+  test("keeps a new thread visible while the session refresh is pending", async () => {
+    const { createComponent, testRender } = await import("@opentui/solid");
+    const { AgentViewRoute } = await import("../src/tui-route");
+    const setupApi = api({ sessions: [], blockRefresh: true });
+    const setup = await testRender(() => createComponent(AgentViewRoute, { api: setupApi.api }), { width: 100, height: 24 });
+
+    try {
+      await settle(setup.renderOnce);
+      setupApi.key("n");
+      await settle(setup.renderOnce);
+      const frame = setup.captureCharFrame();
+
+      expect(frame).toContain("New thread");
+      expect(frame).toContain("Start a new thread");
+      expect(frame).not.toContain("Loading sessions");
     } finally {
       setup.renderer.destroy();
     }
