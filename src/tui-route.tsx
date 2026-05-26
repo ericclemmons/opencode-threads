@@ -33,10 +33,16 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
   const [submittingNew, setSubmittingNew] = createSignal(false);
   const [creatingNew, setCreatingNew] = createSignal(false);
   const [newSessionID, setNewSessionID] = createSignal<string>();
+  const [optimisticSessions, setOptimisticSessions] = createSignal<AgentSession[]>([]);
   const [sessions, { refetch }] = createResource(refreshKey, () => loadSessions(props.api));
   const theme = () => props.api.theme.current;
   const visibleSessions = createMemo(() => {
-    return [ ...(((sessions as any).latest ?? sessions() ?? []) as AgentSession[]) ];
+    const loaded = [ ...(((sessions as any).latest ?? sessions() ?? []) as AgentSession[]) ];
+    const loadedIDs = new Set(loaded.map((session) => session.id));
+    return [
+      ...optimisticSessions().filter((session) => !loadedIDs.has(session.id)),
+      ...loaded,
+    ];
   });
   const groups = createMemo(() => groupThreadRows(visibleSessions(), activeSessionIDs));
   const listRows = createMemo(() => groups().flatMap((group) => group.rows));
@@ -75,6 +81,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
     setNewSessionID(undefined);
     if (sessionID) {
       activeSessionIDs.delete(sessionID);
+      setOptimisticSessions((sessions) => sessions.filter((session) => session.id !== sessionID));
       void new SessionGateway(props.api.client).delete(sessionID).finally(refresh);
     }
   };
@@ -89,7 +96,24 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
     setCreatingNew(true);
     try {
       const { id } = await new SessionGateway(props.api.client).create("New thread");
+      const now = Date.now();
       activeSessionIDs.add(id);
+      setOptimisticSessions((sessions) => [
+        {
+          id,
+          draft: true,
+          title: "New thread",
+          status: "idle",
+          statusTone: "done",
+          preview: "Start a new thread...",
+          transcript: [],
+          updatedAt: now,
+          loadedAt: now,
+          waitingCount: 0,
+          depth: 0,
+        },
+        ...sessions.filter((session) => session.id !== id),
+      ]);
       setNewSessionID(id);
       setSelectedSessionID(id);
       setSelectedIndex(0);
@@ -117,8 +141,19 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
 
     setSubmittingNew(true);
     try {
-      await new SessionGateway(props.api.client).updateTitle(sessionID, promptTitle(prompt));
-      newPromptRef?.submit();
+      const gateway = new SessionGateway(props.api.client);
+      const title = promptTitle(prompt);
+      const parts = promptParts(prompt);
+      await gateway.updateTitle(sessionID, title);
+      setOptimisticSessions((sessions) => sessions.map((session) => (
+        session.id === sessionID
+          ? { ...session, draft: false, title, status: "running", statusTone: "running", preview: "Starting thread..." }
+          : session
+      )));
+      await gateway.sendPromptParts(sessionID, parts);
+      setNewSessionID(undefined);
+      closePrompt();
+      refresh();
     } catch {
       props.api.ui.toast({ variant: "error", message: "Thread creation failed." });
     } finally {
@@ -272,6 +307,13 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
     newPromptRef?.blur();
     newPromptRef?.reset();
     setPromptMode(undefined);
+  });
+
+  createEffect(() => {
+    const loaded = (((sessions as any).latest ?? sessions() ?? []) as AgentSession[]);
+    if (loaded.length === 0) return;
+    const loadedIDs = new Set(loaded.map((session) => session.id));
+    setOptimisticSessions((sessions) => sessions.filter((session) => !loadedIDs.has(session.id)));
   });
 
   return (
