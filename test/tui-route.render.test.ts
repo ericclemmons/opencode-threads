@@ -15,8 +15,10 @@ const theme = {
 function api() {
   const navigations: Array<[string, unknown]> = [];
   const listeners: string[] = [];
+  const createdTitles: string[] = [];
+  const promptCalls: unknown[] = [];
   const listenerHandlers: Record<string, (event: any) => void> = {};
-  const promptRefs: Array<{ resets: number }> = [];
+  const promptRefs: Array<{ current: { input: string; parts: any[] }; resets: number }> = [];
   let keyHandler: ((input: any) => void) | undefined;
 
   return {
@@ -28,6 +30,13 @@ function api() {
             { id: "parent", title: "Parent thread", time: { updated: Date.parse("2026-05-20T12:00:00Z") } },
             { id: "child", parentID: "parent", title: "Child thread", time: { updated: Date.parse("2026-05-20T12:01:00Z") } },
           ],
+          create: async ({ body }: { body: { title: string } }) => {
+            createdTitles.push(body.title);
+            return { id: "new-thread", title: body.title, time: { updated: Date.parse("2026-05-20T12:03:00Z") } };
+          },
+          promptAsync: async (payload: unknown) => {
+            promptCalls.push(payload);
+          },
           status: async () => ({ child: { status: "running" } }),
           messages: async ({ sessionID }: { sessionID: string }) => ({
             items: [
@@ -70,7 +79,7 @@ function api() {
         Prompt: (props: any) => {
           const ref = {
             focused: false,
-            current: { input: "[Pasted ~4 lines] ", parts: [] },
+            current: { input: "New thread body", parts: [] },
             resets: 0,
             set: () => {},
             reset: () => ref.resets++,
@@ -92,6 +101,8 @@ function api() {
     }),
     listeners,
     navigations,
+    createdTitles,
+    promptCalls,
     promptRefs,
   };
 }
@@ -124,7 +135,7 @@ describe("AgentViewRoute rendered output", () => {
     }
   });
 
-  test("returns to threads after new prompt session activation", async () => {
+  test("creates a new thread without activating its session", async () => {
     const { createComponent, testRender } = await import("@opentui/solid");
     const { AgentViewRoute } = await import("../src/tui-route");
     const setupApi = api();
@@ -133,12 +144,23 @@ describe("AgentViewRoute rendered output", () => {
     try {
       await settle(setup.renderOnce);
       setupApi.key("n");
-      setupApi.emit("session.created", { properties: { info: { id: "new-thread" } } });
+      await settle(setup.renderOnce);
 
-      setTimeout(() => setupApi.api.route.navigate("session", { sessionID: "new-thread" }), 0);
-      await Bun.sleep(30);
+      const promptRef = setupApi.promptRefs.at(-1);
+      if (promptRef) {
+        promptRef.current = {
+          input: "[Pasted ~4 lines] ",
+          parts: [{ type: "text", text: "Pasted line 1\nPasted line 2" }],
+        };
+      }
+      setupApi.key("return");
+      await settle(setup.renderOnce);
 
-      expect(setupApi.navigations.at(-1)).toEqual(["threads", { selectedSessionID: "new-thread" }]);
+      expect(setupApi.createdTitles).toEqual(["Pasted line 1"]);
+      expect(setupApi.promptCalls).toEqual([
+        { path: { id: "new-thread" }, body: { parts: [{ type: "text", text: "Pasted line 1\nPasted line 2" }] } },
+      ]);
+      expect(setupApi.navigations).toEqual([]);
     } finally {
       setup.renderer.destroy();
     }
