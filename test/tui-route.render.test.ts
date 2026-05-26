@@ -18,7 +18,7 @@ function api() {
   const createdTitles: string[] = [];
   const promptCalls: unknown[] = [];
   const listenerHandlers: Record<string, (event: any) => void> = {};
-  const promptRefs: Array<{ current: { input: string; parts: any[] }; resets: number }> = [];
+  const promptRefs: Array<{ current: { input: string; parts: any[] }; resets: number; runNativeSubmit: () => void }> = [];
   let keyHandler: ((input: any) => void) | undefined;
 
   return {
@@ -86,6 +86,11 @@ function api() {
             blur: () => {},
             focus: () => {},
             submit: () => {},
+            runNativeSubmit: () => {
+              if (props.disabled) return;
+              props.onSubmit?.();
+              if (!props.sessionID) navigations.push(["session", { sessionID: "native-new-thread" }]);
+            },
           };
           promptRefs.push(ref);
           props.ref?.(ref);
@@ -154,6 +159,7 @@ describe("AgentViewRoute rendered output", () => {
         };
       }
       setupApi.key("return");
+      setupApi.promptRefs.at(-1)?.runNativeSubmit();
       await settle(setup.renderOnce);
 
       expect(setupApi.createdTitles).toEqual(["Pasted line 1"]);

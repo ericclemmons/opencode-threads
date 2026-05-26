@@ -31,6 +31,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
   const [timeTick, setTimeTick] = createSignal(0);
   const [promptMode, setPromptMode] = createSignal<"reply" | "new">();
   const [submittingNew, setSubmittingNew] = createSignal(false);
+  const [blockNewPromptSubmit, setBlockNewPromptSubmit] = createSignal(false);
   const [sessions, { refetch }] = createResource(refreshKey, () => loadSessions(props.api));
   const theme = () => props.api.theme.current;
   const visibleSessions = createMemo(() => {
@@ -155,6 +156,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
     }
 
     setSubmittingNew(true);
+    setBlockNewPromptSubmit(true);
     try {
       const gateway = new SessionGateway(props.api.client);
       const { id } = await gateway.create(promptTitle(prompt));
@@ -168,6 +170,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
       props.api.ui.toast({ variant: "error", message: "Thread creation failed." });
     } finally {
       setSubmittingNew(false);
+      setTimeout(() => setBlockNewPromptSubmit(false), 100);
     }
   };
 
@@ -411,6 +414,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
                   <box height={promptHeight} maxHeight={promptHeight} overflow="hidden">
                     <props.api.ui.Prompt
                       visible
+                      disabled={submittingNew() || blockNewPromptSubmit()}
                       ref={(ref) => (newPromptRef = ref)}
                       onSubmit={() => {
                         newPromptRef?.blur();
