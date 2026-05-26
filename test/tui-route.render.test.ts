@@ -16,9 +16,10 @@ function api() {
   const navigations: Array<[string, unknown]> = [];
   const listeners: string[] = [];
   const createdTitles: string[] = [];
+  const updatedTitles: string[] = [];
   const promptCalls: unknown[] = [];
   const listenerHandlers: Record<string, (event: any) => void> = {};
-  const promptRefs: Array<{ current: { input: string; parts: any[] }; resets: number; runNativeSubmit: () => void }> = [];
+  const promptRefs: Array<{ current: { input: string; parts: any[] }; resets: number }> = [];
   let keyHandler: ((input: any) => void) | undefined;
 
   return {
@@ -34,6 +35,11 @@ function api() {
             createdTitles.push(body.title);
             return { id: "new-thread", title: body.title, time: { updated: Date.parse("2026-05-20T12:03:00Z") } };
           },
+          update: async ({ body }: { body: { title: string } }) => {
+            updatedTitles.push(body.title);
+            return { id: "new-thread", title: body.title, time: { updated: Date.parse("2026-05-20T12:03:00Z") } };
+          },
+          delete: async () => {},
           promptAsync: async (payload: unknown) => {
             promptCalls.push(payload);
           },
@@ -85,9 +91,10 @@ function api() {
             reset: () => ref.resets++,
             blur: () => {},
             focus: () => {},
-            submit: () => {},
-            runNativeSubmit: () => {
-              if (props.disabled) return;
+            submit: () => {
+              if (props.sessionID) {
+                promptCalls.push({ sessionID: props.sessionID, parts: ref.current.parts });
+              }
               props.onSubmit?.();
               if (!props.sessionID) navigations.push(["session", { sessionID: "native-new-thread" }]);
             },
@@ -107,6 +114,7 @@ function api() {
     listeners,
     navigations,
     createdTitles,
+    updatedTitles,
     promptCalls,
     promptRefs,
   };
@@ -159,12 +167,12 @@ describe("AgentViewRoute rendered output", () => {
         };
       }
       setupApi.key("return");
-      setupApi.promptRefs.at(-1)?.runNativeSubmit();
       await settle(setup.renderOnce);
 
-      expect(setupApi.createdTitles).toEqual(["Pasted line 1"]);
+      expect(setupApi.createdTitles).toEqual(["New thread"]);
+      expect(setupApi.updatedTitles).toEqual(["Pasted line 1"]);
       expect(setupApi.promptCalls).toEqual([
-        { path: { id: "new-thread" }, body: { parts: [{ type: "text", text: "Pasted line 1\nPasted line 2" }] } },
+        { sessionID: "new-thread", parts: [{ type: "text", text: "Pasted line 1\nPasted line 2" }] },
       ]);
       expect(setupApi.navigations).toEqual([]);
     } finally {
