@@ -13,6 +13,7 @@ const activeSessionIDs = new Set<string>();
 const promptHeight = 5;
 const promptBottomSpacing = 3;
 const promptPanelHeight = promptHeight + promptBottomSpacing + 3;
+const threadRouteRestoreDelays = [0, 25];
 
 export type AgentViewRouteProps = {
   api: TuiPluginApi;
@@ -24,6 +25,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
   let scroll: ScrollBoxRenderable | undefined;
   let promptRef: TuiPromptRef | undefined;
   let newPromptRef: TuiPromptRef | undefined;
+  let threadRouteRestoreTimers: ReturnType<typeof setTimeout>[] = [];
   const [selectedIndex, setSelectedIndex] = createSignal(0);
   const [selectedSessionID, setSelectedSessionID] = createSignal<string | undefined>(props.selectedSessionID);
   const [refreshKey, setRefreshKey] = createSignal(0);
@@ -141,12 +143,20 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
     else props.api.route.navigate("home");
   };
 
+  const clearThreadRouteRestoreTimers = () => {
+    for (const timer of threadRouteRestoreTimers) clearTimeout(timer);
+    threadRouteRestoreTimers = [];
+  };
+
   const stayInThreads = (sessionID?: string) => {
     const params: Record<string, string> = {};
     if (props.fromSessionID) params.fromSessionID = props.fromSessionID;
     if (sessionID) params.selectedSessionID = sessionID;
 
-    setTimeout(() => props.api.route.navigate("threads", params), 0);
+    clearThreadRouteRestoreTimers();
+    threadRouteRestoreTimers = threadRouteRestoreDelays.map((delay) => (
+      setTimeout(() => props.api.route.navigate("threads", params), delay)
+    ));
   };
 
   const onThreadKeyDown = (evt: Parameters<typeof handleThreadKeyboard>[0]) => handleThreadKeyboard(evt, {
@@ -186,9 +196,14 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
         if (typeof sessionID === "string") {
           activeSessionIDs.add(sessionID);
           if (promptMode() === "new") {
-            setSelectedSessionID(sessionID);
-            setSelectedIndex(0);
-            stayInThreads(sessionID);
+            // Prompt creates the session before it expands pasted-summary parts into
+            // the submitted text. Defer route state changes so this reset cannot
+            // clear the paste metadata mid-submit.
+            threadRouteRestoreTimers.push(setTimeout(() => {
+              setSelectedSessionID(sessionID);
+              setSelectedIndex(0);
+              stayInThreads(sessionID);
+            }, 0));
           }
         }
         refresh();
@@ -207,6 +222,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
     const liveTimer = setInterval(() => setLiveFrame((frame) => frame + 1), 90);
     const timeTimer = setInterval(() => setTimeTick((tick) => tick + 1), 1000);
     disposers.push(
+      clearThreadRouteRestoreTimers,
       () => clearInterval(listTimer),
       () => clearInterval(liveTimer),
       () => clearInterval(timeTimer),
