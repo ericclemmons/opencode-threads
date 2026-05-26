@@ -31,6 +31,8 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
   const [timeTick, setTimeTick] = createSignal(0);
   const [promptMode, setPromptMode] = createSignal<"reply" | "new">();
   const [submittingNew, setSubmittingNew] = createSignal(false);
+  const [creatingNew, setCreatingNew] = createSignal(false);
+  const [newSessionID, setNewSessionID] = createSignal<string>();
   const [sessions, { refetch }] = createResource(refreshKey, () => loadSessions(props.api));
   const theme = () => props.api.theme.current;
   const visibleSessions = createMemo(() => {
@@ -67,14 +69,61 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
     scroll?.focus();
   };
 
+  const cancelNewPrompt = () => {
+    const sessionID = newSessionID();
+    closePrompt();
+    setNewSessionID(undefined);
+    if (sessionID) {
+      activeSessionIDs.delete(sessionID);
+      void new SessionGateway(props.api.client).delete(sessionID).finally(refresh);
+    }
+  };
+
   const replyInline = () => {
     setPromptMode("reply");
     queueMicrotask(() => promptRef?.focus());
   };
 
-  const newAgent = () => {
-    setPromptMode("new");
-    queueMicrotask(() => newPromptRef?.focus());
+  const newAgent = async () => {
+    if (creatingNew()) return;
+    setCreatingNew(true);
+    try {
+      const { id } = await new SessionGateway(props.api.client).create("New thread");
+      activeSessionIDs.add(id);
+      setNewSessionID(id);
+      setSelectedSessionID(id);
+      setSelectedIndex(0);
+      setPromptMode("new");
+      refresh();
+      queueMicrotask(() => newPromptRef?.focus());
+    } catch {
+      props.api.ui.toast({ variant: "error", message: "Thread creation failed." });
+    } finally {
+      setCreatingNew(false);
+    }
+  };
+
+  const submitNewAgent = async () => {
+    if (submittingNew()) return;
+
+    const prompt = newPromptRef?.current;
+    const sessionID = newSessionID();
+    if (!prompt || !sessionID) return;
+
+    if (promptParts(prompt).length === 0) {
+      props.api.ui.toast({ variant: "warning", message: "Enter a prompt to start a thread." });
+      return;
+    }
+
+    setSubmittingNew(true);
+    try {
+      await new SessionGateway(props.api.client).updateTitle(sessionID, promptTitle(prompt));
+      newPromptRef?.submit();
+    } catch {
+      props.api.ui.toast({ variant: "error", message: "Thread creation failed." });
+    } finally {
+      setSubmittingNew(false);
+    }
   };
 
   const abortSelected = async () => {
@@ -142,43 +191,14 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
     else props.api.route.navigate("home");
   };
 
-  const submitNewAgent = async () => {
-    if (submittingNew()) return;
-
-    const prompt = newPromptRef?.current;
-    if (!prompt) return;
-
-    const parts = promptParts(prompt);
-    if (parts.length === 0) {
-      props.api.ui.toast({ variant: "warning", message: "Enter a prompt to start a thread." });
-      return;
-    }
-
-    setSubmittingNew(true);
-    try {
-      const gateway = new SessionGateway(props.api.client);
-      const { id } = await gateway.create(promptTitle(prompt));
-      activeSessionIDs.add(id);
-      setSelectedSessionID(id);
-      setSelectedIndex(0);
-      await gateway.sendPromptParts(id, parts);
-      closePrompt();
-      refresh();
-    } catch {
-      props.api.ui.toast({ variant: "error", message: "Thread creation failed." });
-    } finally {
-      setSubmittingNew(false);
-    }
-  };
-
   const onThreadKeyDown = (evt: Parameters<typeof handleThreadKeyboard>[0]) => handleThreadKeyboard(evt, {
     dialogOpen: () => props.api.ui.dialog.open,
     promptOpen,
-    closePrompt,
+    closePrompt: () => promptMode() === "new" ? cancelNewPrompt() : closePrompt(),
     goBack,
     moveSelection,
     attachSelected,
-    newAgent,
+    newAgent: () => void newAgent(),
     replyInline,
     abortSelected: () => void abortSelected(),
     archiveSelected: () => void archiveSelected(),
@@ -246,6 +266,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
 
   createEffect(() => {
     selectedID();
+    if (promptMode() === "new") return;
     promptRef?.blur();
     promptRef?.reset();
     newPromptRef?.blur();
@@ -410,12 +431,11 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
                 <box flexDirection="column" height="100%" minHeight={0}>
                   <box height={promptHeight} maxHeight={promptHeight} overflow="hidden">
                     <props.api.ui.Prompt
+                      sessionID={newSessionID()}
                       visible
                       ref={(ref) => (newPromptRef = ref)}
                       onSubmit={() => {
-                        newPromptRef?.blur();
-                        setPromptMode(undefined);
-                        scroll?.focus();
+                        closePrompt();
                         refresh();
                       }}
                       showPlaceholder
