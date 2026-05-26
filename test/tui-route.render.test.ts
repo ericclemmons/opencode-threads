@@ -15,6 +15,11 @@ const theme = {
 function api() {
   const navigations: Array<[string, unknown]> = [];
   const listeners: string[] = [];
+  const createdTitles: string[] = [];
+  const promptCalls: unknown[] = [];
+  const listenerHandlers: Record<string, (event: any) => void> = {};
+  const promptRefs: Array<{ current: { input: string; parts: any[] }; resets: number }> = [];
+  let keyHandler: ((input: any) => void) | undefined;
 
   return {
     api: {
@@ -25,6 +30,13 @@ function api() {
             { id: "parent", title: "Parent thread", time: { updated: Date.parse("2026-05-20T12:00:00Z") } },
             { id: "child", parentID: "parent", title: "Child thread", time: { updated: Date.parse("2026-05-20T12:01:00Z") } },
           ],
+          create: async ({ body }: { body: { title: string } }) => {
+            createdTitles.push(body.title);
+            return { id: "new-thread", title: body.title, time: { updated: Date.parse("2026-05-20T12:03:00Z") } };
+          },
+          promptAsync: async (payload: unknown) => {
+            promptCalls.push(payload);
+          },
           status: async () => ({ child: { status: "running" } }),
           messages: async ({ sessionID }: { sessionID: string }) => ({
             items: [
@@ -34,13 +46,17 @@ function api() {
         },
       },
       event: {
-        on: (name: string) => {
+        on: (name: string, handler: (event: any) => void) => {
           listeners.push(name);
+          listenerHandlers[name] = handler;
           return () => {};
         },
       },
       keymap: {
-        intercept: () => () => {},
+        intercept: (_type: string, handler: (input: any) => void) => {
+          keyHandler = handler;
+          return () => {};
+        },
       },
       route: {
         navigate: (name: string, params?: unknown) => navigations.push([name, params]),
@@ -60,12 +76,34 @@ function api() {
           replace: () => {},
         },
         DialogConfirm: () => undefined,
-        Prompt: () => undefined,
+        Prompt: (props: any) => {
+          const ref = {
+            focused: false,
+            current: { input: "New thread body", parts: [] },
+            resets: 0,
+            set: () => {},
+            reset: () => ref.resets++,
+            blur: () => {},
+            focus: () => {},
+            submit: () => {},
+          };
+          promptRefs.push(ref);
+          props.ref?.(ref);
+          return undefined;
+        },
         toast: () => {},
       },
     } as any,
+    emit: (name: string, event: any) => listenerHandlers[name]?.(event),
+    key: (name: string) => keyHandler?.({
+      event: { name, ctrl: false, meta: false, super: false },
+      consume: () => {},
+    }),
     listeners,
     navigations,
+    createdTitles,
+    promptCalls,
+    promptRefs,
   };
 }
 
@@ -92,6 +130,58 @@ describe("AgentViewRoute rendered output", () => {
       expect(frame).toContain("Preview for parent");
       expect(frame).toContain("Reply to this thread");
       expect(setupApi.listeners).toContain("session.created");
+    } finally {
+      setup.renderer.destroy();
+    }
+  });
+
+  test("creates a new thread without activating its session", async () => {
+    const { createComponent, testRender } = await import("@opentui/solid");
+    const { AgentViewRoute } = await import("../src/tui-route");
+    const setupApi = api();
+    const setup = await testRender(() => createComponent(AgentViewRoute, { api: setupApi.api }), { width: 100, height: 24 });
+
+    try {
+      await settle(setup.renderOnce);
+      setupApi.key("n");
+      await settle(setup.renderOnce);
+
+      const promptRef = setupApi.promptRefs.at(-1);
+      if (promptRef) {
+        promptRef.current = {
+          input: "[Pasted ~4 lines] ",
+          parts: [{ type: "text", text: "Pasted line 1\nPasted line 2" }],
+        };
+      }
+      setupApi.key("return");
+      await settle(setup.renderOnce);
+
+      expect(setupApi.createdTitles).toEqual(["Pasted line 1"]);
+      expect(setupApi.promptCalls).toEqual([
+        { path: { id: "new-thread" }, body: { parts: [{ type: "text", text: "Pasted line 1\nPasted line 2" }] } },
+      ]);
+      expect(setupApi.navigations).toEqual([]);
+    } finally {
+      setup.renderer.destroy();
+    }
+  });
+
+  test("does not reset the new prompt synchronously on session creation", async () => {
+    const { createComponent, testRender } = await import("@opentui/solid");
+    const { AgentViewRoute } = await import("../src/tui-route");
+    const setupApi = api();
+    const setup = await testRender(() => createComponent(AgentViewRoute, { api: setupApi.api }), { width: 100, height: 24 });
+
+    try {
+      await settle(setup.renderOnce);
+      setupApi.key("n");
+      await settle(setup.renderOnce);
+      const promptRef = setupApi.promptRefs.at(-1);
+
+      setupApi.emit("session.created", { properties: { info: { id: "new-thread" } } });
+      await setup.renderOnce();
+
+      expect(promptRef?.resets).toBe(0);
     } finally {
       setup.renderer.destroy();
     }

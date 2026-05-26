@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/solid */
 
 import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core";
-import type { TuiPluginApi, TuiPromptRef } from "@opencode-ai/plugin/tui";
+import type { TuiPluginApi, TuiPromptInfo, TuiPromptRef } from "@opencode-ai/plugin/tui";
 import { createEffect, createMemo, createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { SessionGateway } from "./session-gateway";
 import { groupThreadRows, type AgentSession } from "./thread-catalog";
@@ -30,6 +30,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
   const [liveFrame, setLiveFrame] = createSignal(0);
   const [timeTick, setTimeTick] = createSignal(0);
   const [promptMode, setPromptMode] = createSignal<"reply" | "new">();
+  const [submittingNew, setSubmittingNew] = createSignal(false);
   const [sessions, { refetch }] = createResource(refreshKey, () => loadSessions(props.api));
   const theme = () => props.api.theme.current;
   const visibleSessions = createMemo(() => {
@@ -141,12 +142,33 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
     else props.api.route.navigate("home");
   };
 
-  const stayInThreads = (sessionID?: string) => {
-    const params: Record<string, string> = {};
-    if (props.fromSessionID) params.fromSessionID = props.fromSessionID;
-    if (sessionID) params.selectedSessionID = sessionID;
+  const submitNewAgent = async () => {
+    if (submittingNew()) return;
 
-    setTimeout(() => props.api.route.navigate("threads", params), 0);
+    const prompt = newPromptRef?.current;
+    if (!prompt) return;
+
+    const parts = promptParts(prompt);
+    if (parts.length === 0) {
+      props.api.ui.toast({ variant: "warning", message: "Enter a prompt to start a thread." });
+      return;
+    }
+
+    setSubmittingNew(true);
+    try {
+      const gateway = new SessionGateway(props.api.client);
+      const { id } = await gateway.create(promptTitle(prompt));
+      activeSessionIDs.add(id);
+      setSelectedSessionID(id);
+      setSelectedIndex(0);
+      await gateway.sendPromptParts(id, parts);
+      closePrompt();
+      refresh();
+    } catch {
+      props.api.ui.toast({ variant: "error", message: "Thread creation failed." });
+    } finally {
+      setSubmittingNew(false);
+    }
   };
 
   const onThreadKeyDown = (evt: Parameters<typeof handleThreadKeyboard>[0]) => handleThreadKeyboard(evt, {
@@ -171,6 +193,12 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
     scroll?.focus();
     const disposers = [
       props.api.keymap.intercept("key", ({ event, consume }) => {
+        if (promptMode() === "new" && event.name === "return" && !event.ctrl && !event.meta && !event.super) {
+          consume();
+          void submitNewAgent();
+          return;
+        }
+
         onThreadKeyDown({
           defaultPrevented: false,
           name: event.name,
@@ -185,11 +213,6 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
         const sessionID = event.properties?.info?.id ?? event.properties?.sessionID ?? event.properties?.id;
         if (typeof sessionID === "string") {
           activeSessionIDs.add(sessionID);
-          if (promptMode() === "new") {
-            setSelectedSessionID(sessionID);
-            setSelectedIndex(0);
-            stayInThreads(sessionID);
-          }
         }
         refresh();
       }),
@@ -408,4 +431,20 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
       </box>
     </box>
   );
+}
+
+function promptParts(prompt: TuiPromptInfo) {
+  if (prompt.parts.length > 0) return prompt.parts;
+
+  const text = prompt.input.trim();
+  return text ? [{ type: "text" as const, text }] : [];
+}
+
+function promptTitle(prompt: TuiPromptInfo) {
+  const text = prompt.parts
+    .map((part) => part.type === "text" ? part.text : "")
+    .join(" ")
+    .trim() || prompt.input.trim();
+
+  return text.split("\n", 1)[0]?.trim() || "New thread";
 }

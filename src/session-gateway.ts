@@ -133,12 +133,14 @@ export class SessionGateway {
     }
   }
 
-  async sendPrompt(sessionID: string, prompt: string) {
-    const body = {
-      parts: [{ type: "text", text: prompt }],
-    };
+  async sendPromptParts(sessionID: string, parts: any[]) {
+    const body = { parts };
     const legacyPayload = {
       path: { id: sessionID },
+      body,
+    };
+    const v2Payload = {
+      path: { sessionID },
       body,
     };
     const flatPayload = {
@@ -146,8 +148,8 @@ export class SessionGateway {
       ...body,
     };
     const payloads = this.usesFlatParams
-      ? [flatPayload, legacyPayload]
-      : [legacyPayload, flatPayload];
+      ? [flatPayload, legacyPayload, v2Payload]
+      : [legacyPayload, v2Payload, flatPayload];
 
     if (typeof this.session.promptAsync === "function") {
       let lastError: unknown;
@@ -191,6 +193,10 @@ export class SessionGateway {
       }
     }
     throw lastError;
+  }
+
+  async sendPrompt(sessionID: string, prompt: string) {
+    return this.sendPromptParts(sessionID, [{ type: "text", text: prompt }]);
   }
 
   async abort(sessionID: string) {
