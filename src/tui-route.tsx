@@ -330,70 +330,111 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
       </box>
 
       <box flexDirection="column" flexGrow={1} minHeight={0} paddingLeft={2} paddingRight={2} gap={0}>
-        <scrollbox
-          ref={(renderable: ScrollBoxRenderable) => (scroll = renderable)}
-          minHeight={0}
-          flexGrow={1}
-          focusable
-          onKeyDown={onThreadKeyDown}
-          scrollbarOptions={{ visible: false }}
-        >
-          <box flexDirection="column" width="100%">
-            <Show when={!sessions.loading || visibleSessions().length > 0} fallback={<text fg={theme().textMuted}>Loading sessions...</text>}>
-              <For each={groups()} fallback={<text fg={theme().textMuted}>No sessions yet. Press n to start one.</text>}>
-                {(group) => (
-                  <box flexDirection="column" paddingTop={1}>
-                    <box flexDirection="row" gap={1}>
-                      <text fg={theme().textMuted} attributes={TextAttributes.BOLD}>{group.title}</text>
+        <box flexDirection="column" flexGrow={1} minHeight={0}>
+          <scrollbox
+            ref={(renderable: ScrollBoxRenderable) => (scroll = renderable)}
+            minHeight={0}
+            flexGrow={1}
+            focusable
+            onKeyDown={onThreadKeyDown}
+            scrollbarOptions={{ visible: false }}
+          >
+            <box flexDirection="column" width="100%">
+              <Show when={!sessions.loading || visibleSessions().length > 0} fallback={<text fg={theme().textMuted}>Loading sessions...</text>}>
+                <For each={groups()} fallback={<text fg={theme().textMuted}>No sessions yet. Press n to start one.</text>}>
+                  {(group) => (
+                    <box flexDirection="column" paddingTop={1}>
+                      <box flexDirection="row" gap={1}>
+                        <text fg={theme().textMuted} attributes={TextAttributes.BOLD}>{group.title}</text>
+                      </box>
+                      <For each={group.rows}>
+                        {(row) => {
+                          const globalIndex = () => listRows().findIndex((item) => item.id === row.id);
+                          const selectedRow = () => selected()?.id === row.id;
+                          return (
+                            <box
+                              id={`thread-row-${row.id}`}
+                              flexDirection="row"
+                              width="100%"
+                              gap={3}
+                              paddingLeft={1}
+                              paddingRight={1}
+                              backgroundColor={selectedRow() ? theme().backgroundElement : undefined}
+                            >
+                              <text
+                                fg={statusColor(theme(), row.statusTone)}
+                                attributes={selectedRow() ? TextAttributes.BOLD : undefined}
+                                wrapMode="none"
+                              >
+                                {padCell(rowStatusText(row, liveFrame(), globalIndex()), 3)}
+                              </text>
+                              <text
+                                fg={rowTitleColor(theme(), row, selectedRow())}
+                                wrapMode="none"
+                              >
+                                {padCell(truncate(rowTitle(row), 34), 36)}
+                              </text>
+                              <text
+                                fg={rowPreviewColor(theme(), row, selectedRow())}
+                                flexGrow={1}
+                                minWidth={0}
+                                wrapMode="none"
+                              >
+                                {rowActionHint(row, selectedRow())}
+                              </text>
+                              <text fg={rowTimeColor(theme(), selectedRow())} wrapMode="none">
+                                {rowTime(row, timeTick())}
+                              </text>
+                            </box>
+                          );
+                        }}
+                      </For>
                     </box>
-                    <For each={group.rows}>
-                      {(row) => {
-                        const globalIndex = () => listRows().findIndex((item) => item.id === row.id);
-                        const selectedRow = () => selected()?.id === row.id;
-                        return (
-                          <box
-                            id={`thread-row-${row.id}`}
-                            flexDirection="row"
-                            width="100%"
-                            gap={3}
-                            paddingLeft={1}
-                            paddingRight={1}
-                            backgroundColor={selectedRow() ? theme().backgroundElement : undefined}
-                          >
-                            <text
-                              fg={statusColor(theme(), row.statusTone)}
-                              attributes={selectedRow() ? TextAttributes.BOLD : undefined}
-                              wrapMode="none"
-                            >
-                              {padCell(rowStatusText(row, liveFrame(), globalIndex()), 3)}
-                            </text>
-                            <text
-                              fg={rowTitleColor(theme(), row, selectedRow())}
-                              wrapMode="none"
-                            >
-                              {padCell(truncate(rowTitle(row), 34), 36)}
-                            </text>
-                            <text
-                              fg={rowPreviewColor(theme(), row, selectedRow())}
-                              flexGrow={1}
-                              minWidth={0}
-                              wrapMode="none"
-                            >
-                              {rowActionHint(row, selectedRow())}
-                            </text>
-                            <text fg={rowTimeColor(theme(), selectedRow())} wrapMode="none">
-                              {rowTime(row, timeTick())}
-                            </text>
-                          </box>
-                        );
-                      }}
-                    </For>
-                  </box>
-                )}
-              </For>
-            </Show>
-          </box>
-        </scrollbox>
+                  )}
+                </For>
+              </Show>
+            </box>
+          </scrollbox>
+        </box>
+
+        <box
+          flexDirection="column"
+          flexGrow={1}
+          minHeight={0}
+          border={["top"]}
+          borderColor={theme().borderSubtle}
+          paddingTop={1}
+          paddingLeft={1}
+          paddingRight={1}
+          overflow="hidden"
+        >
+          <Show when={selected()} keyed fallback={<text fg={theme().textMuted}>Select a session to preview its thread.</text>}>
+            {(row) => (
+              <box flexDirection="column" height="100%" minHeight={0}>
+                <box flexDirection="row" gap={2}>
+                  <text fg={theme().text} attributes={TextAttributes.BOLD} wrapMode="none">{truncate(row.title, 56)}</text>
+                  <Show when={row.statusTone !== "done"}>
+                    <text fg={statusColor(theme(), row.statusTone)} wrapMode="none">{row.status}</text>
+                  </Show>
+                  <text fg={theme().textMuted} wrapMode="none">{rowTime(row, timeTick())}</text>
+                </box>
+
+                <box flexDirection="column" flexGrow={1} minHeight={0} paddingTop={1} overflow="hidden">
+                  <For each={(row.transcript.length > 0 ? row.transcript : [{ speaker: "Agent", text: row.preview }]).slice(-6)}>
+                    {(turn) => (
+                      <box flexDirection="column" paddingBottom={1}>
+                        <Show when={turn.speaker}>
+                          <text fg={theme().textMuted} attributes={TextAttributes.BOLD} wrapMode="none">{turn.speaker}</text>
+                        </Show>
+                        <text fg={theme().text} wrapMode="word">{turn.text}</text>
+                      </box>
+                    )}
+                  </For>
+                </box>
+              </box>
+            )}
+          </Show>
+        </box>
 
         <box
           flexDirection="column"
