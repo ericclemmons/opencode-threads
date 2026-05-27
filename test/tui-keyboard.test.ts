@@ -69,6 +69,14 @@ describe("handleThreadKeyboard", () => {
     expect(state.calls).toEqual(["deleteSelected", "archiveSelected"]);
   });
 
+  test("r opens reply mode", () => {
+    const state = handlers();
+
+    handleThreadKeyboard(press("r").event, state.handlers);
+
+    expect(state.calls).toEqual(["replyInline"]);
+  });
+
   test("ignores ordinary shortcuts while a dialog or prompt is open", () => {
     const dialog = handlers({ dialogOpen: () => true });
     handleThreadKeyboard(press("j").event, dialog.handlers);

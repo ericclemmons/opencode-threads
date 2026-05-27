@@ -2,7 +2,7 @@
 
 import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core";
 import type { TuiPluginApi, TuiPromptInfo, TuiPromptRef } from "@opencode-ai/plugin/tui";
-import { createEffect, createMemo, createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, For, onCleanup, onMount, Show, untrack } from "solid-js";
 import { SessionGateway } from "./session-gateway";
 import { groupThreadRows, type AgentSession } from "./thread-catalog";
 import { handleThreadKeyboard } from "./tui-keyboard";
@@ -13,6 +13,7 @@ const activeSessionIDs = new Set<string>();
 const promptHeight = 5;
 const promptBottomSpacing = 3;
 const promptPanelHeight = promptHeight + promptBottomSpacing + 3;
+const previewPanelHeight = 6;
 
 export type AgentViewRouteProps = {
   api: TuiPluginApi;
@@ -301,7 +302,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
 
   createEffect(() => {
     selectedID();
-    if (promptMode() === "new") return;
+    if (untrack(promptMode) === "new") return;
     promptRef?.blur();
     promptRef?.reset();
     newPromptRef?.blur();
@@ -399,7 +400,8 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
 
         <box
           flexDirection="column"
-          flexGrow={1}
+          height={previewPanelHeight}
+          flexShrink={0}
           minHeight={0}
           border={["top"]}
           borderColor={theme().borderSubtle}
@@ -419,15 +421,38 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
                   <text fg={theme().textMuted} wrapMode="none">{rowTime(row, timeTick())}</text>
                 </box>
 
-                <box flexDirection="column" flexGrow={1} minHeight={0} paddingTop={1} overflow="hidden">
-                  <For each={(row.transcript.length > 0 ? row.transcript : [{ speaker: "Agent", text: row.preview }]).slice(-6)}>
-                    {(turn) => (
-                      <box flexDirection="column" paddingBottom={1}>
-                        <Show when={turn.speaker}>
-                          <text fg={theme().textMuted} attributes={TextAttributes.BOLD} wrapMode="none">{turn.speaker}</text>
-                        </Show>
-                        <text fg={theme().text} wrapMode="word">{turn.text}</text>
-                      </box>
+                <box flexDirection="column" flexGrow={1} minHeight={0} paddingTop={1} overflow="hidden" justifyContent="flex-end">
+                  <For each={(row.transcript.length > 0 ? row.transcript : [{ role: "assistant" as const, text: row.preview }]).slice(-5)}>
+                    {(turn, index) => (
+                      <Show
+                        when={turn.role === "user"}
+                        fallback={(
+                          <box flexDirection="column" marginTop={index() === 0 ? 0 : 1} paddingLeft={turn.role === "assistant" ? 3 : 0}>
+                            <text fg={turn.role === "activity" ? theme().textMuted : theme().text} wrapMode="word">{turn.text}</text>
+                            <Show when={turn.role === "assistant" && (turn.mode || turn.model)}>
+                              <text marginTop={1} fg={theme().textMuted} wrapMode="none">
+                                <span style={{ fg: statusColor(theme(), row.statusTone) }}>▣ </span>
+                                <span style={{ fg: theme().text }}>{turn.mode ?? "agent"}</span>
+                                <Show when={turn.model}>
+                                  <span style={{ fg: theme().textMuted }}> · {turn.model}</span>
+                                </Show>
+                              </text>
+                            </Show>
+                          </box>
+                        )}
+                      >
+                        <box
+                          border={["left"]}
+                          borderColor={theme().accent}
+                          paddingTop={1}
+                          paddingBottom={1}
+                          paddingLeft={2}
+                          marginTop={index() === 0 ? 0 : 1}
+                          backgroundColor={theme().backgroundElement}
+                        >
+                          <text fg={theme().text} wrapMode="word">{turn.text}</text>
+                        </box>
+                      </Show>
                     )}
                   </For>
                 </box>
