@@ -27,8 +27,18 @@ describe("message normalizer", () => {
       { role: "assistant", parts: [{ type: "tool", tool: "bash", state: { status: "running" } }] },
     ];
 
-    expect(sessionTranscript(messages)).toEqual([{ speaker: "Agent", text: "Running command" }]);
+    expect(sessionTranscript(messages)).toEqual([{ role: "assistant", speaker: "Agent", text: "Running command", mode: undefined, model: "" }]);
     expect(coordinatorContextLines(messages)).toEqual([]);
+  });
+
+  test("preserves transcript line breaks for native-style message rendering", () => {
+    const messages = [
+      { role: "assistant", content: [{ type: "text", text: "Short Version\nA user deployed something.\n\nCustomer Impact\nBuilds failed." }], mode: "build", modelID: "gpt-5.5" },
+    ];
+
+    expect(sessionTranscript(messages)).toEqual([
+      { role: "assistant", speaker: "Agent", text: "Short Version\nA user deployed something.\n\nCustomer Impact\nBuilds failed.", mode: "build", model: "gpt-5.5" },
+    ]);
   });
 
   test("returns latest visible turn text", () => {

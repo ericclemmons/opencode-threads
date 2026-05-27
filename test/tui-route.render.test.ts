@@ -19,7 +19,7 @@ function api(options: { sessions?: any[]; blockRefresh?: boolean } = {}) {
   const updatedTitles: string[] = [];
   const promptCalls: unknown[] = [];
   const listenerHandlers: Record<string, (event: any) => void> = {};
-  const promptRefs: Array<{ current: { input: string; parts: any[] }; resets: number }> = [];
+  const promptRefs: Array<{ current: { input: string; parts: any[] }; focused: boolean; resets: number }> = [];
   let keyHandler: ((input: any) => void) | undefined;
   let listCalls = 0;
   const sessions = options.sessions ?? [
@@ -95,8 +95,12 @@ function api(options: { sessions?: any[]; blockRefresh?: boolean } = {}) {
             resets: 0,
             set: () => {},
             reset: () => ref.resets++,
-            blur: () => {},
-            focus: () => {},
+            blur: () => {
+              ref.focused = false;
+            },
+            focus: () => {
+              ref.focused = true;
+            },
             submit: () => {
               if (props.sessionID) {
                 promptCalls.push({ sessionID: props.sessionID, parts: ref.current.parts });
@@ -149,6 +153,23 @@ describe("AgentViewRoute rendered output", () => {
       expect(frame).toContain("Preview for parent");
       expect(frame).toContain("Reply to this thread");
       expect(setupApi.listeners).toContain("session.created");
+    } finally {
+      setup.renderer.destroy();
+    }
+  });
+
+  test("opens the native prompt when replying to a selected thread", async () => {
+    const { createComponent, testRender } = await import("@opentui/solid");
+    const { AgentViewRoute } = await import("../src/tui-route");
+    const setupApi = api();
+    const setup = await testRender(() => createComponent(AgentViewRoute, { api: setupApi.api }), { width: 100, height: 24 });
+
+    try {
+      await settle(setup.renderOnce);
+      setupApi.key("r");
+      await settle(setup.renderOnce);
+
+      expect(setupApi.promptRefs.at(-1)?.focused).toBe(true);
     } finally {
       setup.renderer.destroy();
     }
