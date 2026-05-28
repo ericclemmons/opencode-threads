@@ -30,10 +30,6 @@ export function rowTitle(row: AgentSession): string {
   return row.depth > 0 ? `${"  ".repeat(Math.min(row.depth, 4))}${row.title}` : row.title;
 }
 
-export function rowActionHint(row: AgentSession, _selected: boolean, preview?: string): string {
-  return preview ?? row.preview;
-}
-
 export function rowStatusText(row: AgentSession, frame = 0, offset = 0): string {
   switch (row.statusTone) {
     case "waiting":
@@ -50,11 +46,6 @@ export function rowStatusText(row: AgentSession, frame = 0, offset = 0): string 
 export function rowTitleColor(theme: Theme, _row: AgentSession, selected: boolean) {
   if (selected) return theme.warning;
   return theme.text;
-}
-
-export function rowPreviewColor(theme: Theme, row: AgentSession, selected: boolean) {
-  if (selected) return theme.text;
-  return isOlderRow(row) ? theme.textMuted : theme.textMuted;
 }
 
 export function rowTimeColor(theme: Theme, selected: boolean) {
@@ -77,9 +68,4 @@ export function statusColor(theme: Theme, tone: AgentSession["statusTone"]) {
     case "done":
       return theme.textMuted;
   }
-}
-
-function isOlderRow(row: AgentSession): boolean {
-  if (!row.updatedAt) return false;
-  return Date.now() - row.updatedAt > 14 * 24 * 60 * 60 * 1000;
 }

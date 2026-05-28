@@ -7,13 +7,12 @@ import { SessionGateway } from "./session-gateway";
 import { groupThreadRows, type AgentSession } from "./thread-catalog";
 import { handleThreadKeyboard } from "./tui-keyboard";
 import { loadSessions } from "./tui-loader";
-import { padCell, rowActionHint, rowPreviewColor, rowStatusText, rowTime, rowTimeColor, rowTitle, rowTitleColor, statusColor, truncate } from "./tui-format";
+import { padCell, rowStatusText, rowTime, rowTimeColor, rowTitle, rowTitleColor, statusColor, truncate } from "./tui-format";
 
 const activeSessionIDs = new Set<string>();
 const promptHeight = 5;
 const promptBottomSpacing = 3;
 const promptPanelHeight = promptHeight + promptBottomSpacing + 3;
-const previewPanelHeight = 6;
 
 export type AgentViewRouteProps = {
   api: TuiPluginApi;
@@ -331,7 +330,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
       </box>
 
       <box flexDirection="column" flexGrow={1} minHeight={0} paddingLeft={2} paddingRight={2} gap={0}>
-        <box flexDirection="column" flexGrow={1} minHeight={0}>
+        <box flexDirection="column" height={0} flexGrow={1} minHeight={0}>
           <scrollbox
             ref={(renderable: ScrollBoxRenderable) => (scroll = renderable)}
             minHeight={0}
@@ -375,14 +374,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
                               >
                                 {padCell(truncate(rowTitle(row), 34), 36)}
                               </text>
-                              <text
-                                fg={rowPreviewColor(theme(), row, selectedRow())}
-                                flexGrow={1}
-                                minWidth={0}
-                                wrapMode="none"
-                              >
-                                {rowActionHint(row, selectedRow())}
-                              </text>
+                              <box flexGrow={1} minWidth={0} />
                               <text fg={rowTimeColor(theme(), selectedRow())} wrapMode="none">
                                 {rowTime(row, timeTick())}
                               </text>
@@ -400,27 +392,19 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
 
         <box
           flexDirection="column"
-          height={previewPanelHeight}
-          flexShrink={0}
+          height={0}
+          flexGrow={2}
+          flexShrink={1}
           minHeight={0}
           border={["top"]}
           borderColor={theme().borderSubtle}
-          paddingTop={1}
           paddingLeft={1}
           paddingRight={1}
           overflow="hidden"
         >
           <Show when={selected()} keyed fallback={<text fg={theme().textMuted}>Select a session to preview its thread.</text>}>
             {(row) => (
-              <box flexDirection="column" height="100%" minHeight={0}>
-                <box flexDirection="row" gap={2}>
-                  <text fg={theme().text} attributes={TextAttributes.BOLD} wrapMode="none">{truncate(row.title, 56)}</text>
-                  <Show when={row.statusTone !== "done"}>
-                    <text fg={statusColor(theme(), row.statusTone)} wrapMode="none">{row.status}</text>
-                  </Show>
-                  <text fg={theme().textMuted} wrapMode="none">{rowTime(row, timeTick())}</text>
-                </box>
-
+              <box flexDirection="column" flexGrow={1} minHeight={0}>
                 <box flexDirection="column" flexGrow={1} minHeight={0} paddingTop={1} overflow="hidden" justifyContent="flex-end">
                   <For each={(row.transcript.length > 0 ? row.transcript : [{ role: "assistant" as const, text: row.preview }]).slice(-5)}>
                     {(turn, index) => (
@@ -477,14 +461,6 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
               <Show when={selected()} keyed fallback={<text fg={theme().textMuted}>Select a session.</text>}>
                 {(row) => (
                   <box flexDirection="column" height="100%">
-                    <box flexDirection="row" gap={2}>
-                      <text fg={theme().text} attributes={TextAttributes.BOLD}>{row.title}</text>
-                      <Show when={row.statusTone !== "done"}>
-                        <text fg={statusColor(theme(), row.statusTone)}>{row.status}</text>
-                      </Show>
-                      <text fg={theme().textMuted}>{rowTime(row, timeTick())}</text>
-                    </box>
-
                     <box paddingTop={0} flexDirection="column" gap={0} flexGrow={1} minHeight={0}>
                       <Show
                         when={promptMode() === "reply"}
