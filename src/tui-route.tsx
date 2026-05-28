@@ -531,14 +531,39 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
 }
 
 function promptParts(prompt: TuiPromptInfo) {
-  if (prompt.parts.length > 0) return prompt.parts;
-
   const text = prompt.input.trim();
+  if (prompt.parts.length > 0) {
+    const parts: TuiPromptInfo["parts"] = [];
+    const appendText = (value: string) => {
+      if (!value) return;
+      const last = parts.at(-1);
+      if (last?.type === "text") last.text += value;
+      else parts.push({ type: "text", text: value });
+    };
+    let partIndex = 0;
+    let lastIndex = 0;
+
+    for (const match of text.matchAll(/\[Pasted [^\]]+\]/g)) {
+      const start = match.index ?? 0;
+      appendText(text.slice(lastIndex, start));
+
+      const part = prompt.parts[partIndex++];
+      if (part?.type === "text") appendText(part.text);
+      else if (part) parts.push(part);
+
+      lastIndex = start + match[0].length;
+    }
+
+    appendText(text.slice(lastIndex));
+
+    return partIndex > 0 ? parts : prompt.parts;
+  }
+
   return text ? [{ type: "text" as const, text }] : [];
 }
 
 function promptTitle(prompt: TuiPromptInfo) {
-  const text = prompt.parts
+  const text = promptParts(prompt)
     .map((part) => part.type === "text" ? part.text : "")
     .join(" ")
     .trim() || prompt.input.trim();
