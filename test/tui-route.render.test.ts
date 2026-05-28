@@ -222,7 +222,7 @@ describe("AgentViewRoute rendered output", () => {
     }
   });
 
-  test("creates a new thread without activating its session", async () => {
+  test("creates a new thread with pasted and typed prompt text", async () => {
     const { createComponent, testRender } = await import("@opentui/solid");
     const { AgentViewRoute } = await import("../src/tui-route");
     const setupApi = api();
@@ -236,7 +236,7 @@ describe("AgentViewRoute rendered output", () => {
       const promptRef = setupApi.promptRefs.at(-1);
       if (promptRef) {
         promptRef.current = {
-          input: "[Pasted ~4 lines] ",
+          input: "Summarize [Pasted ~4 lines] then follow up",
           parts: [{ type: "text", text: "Pasted line 1\nPasted line 2" }],
         };
       }
@@ -244,9 +244,9 @@ describe("AgentViewRoute rendered output", () => {
       await settle(setup.renderOnce);
 
       expect(setupApi.createdTitles).toEqual(["New thread"]);
-      expect(setupApi.updatedTitles).toEqual(["Pasted line 1"]);
+      expect(setupApi.updatedTitles).toEqual(["Summarize Pasted line 1"]);
       expect(setupApi.promptCalls).toEqual([
-        { path: { id: "new-thread" }, body: { parts: [{ type: "text", text: "Pasted line 1\nPasted line 2" }] } },
+        { path: { id: "new-thread" }, body: { parts: [{ type: "text", text: "Summarize Pasted line 1\nPasted line 2 then follow up" }] } },
       ]);
       expect(setupApi.navigations).toEqual([]);
     } finally {
