@@ -7,12 +7,10 @@ import { SessionGateway } from "./session-gateway";
 import { groupThreadRows, type AgentSession } from "./thread-catalog";
 import { handleThreadKeyboard } from "./tui-keyboard";
 import { loadSessions } from "./tui-loader";
-import { padCell, rowStatusText, rowTime, rowTimeColor, rowTitle, rowTitleColor, statusColor, truncate } from "./tui-format";
+import { padCell, rowStatusText, rowTime, rowTimeColor, rowTitle, rowTitleColor, statusColor } from "./tui-format";
 
 const activeSessionIDs = new Set<string>();
 const promptHeight = 5;
-const promptBottomSpacing = 3;
-const promptPanelHeight = promptHeight + promptBottomSpacing + 3;
 
 export type AgentViewRouteProps = {
   api: TuiPluginApi;
@@ -371,10 +369,12 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
                               <text
                                 fg={rowTitleColor(theme(), row, selectedRow())}
                                 wrapMode="none"
+                                flexGrow={1}
+                                minWidth={0}
+                                truncate
                               >
-                                {padCell(truncate(rowTitle(row), 34), 36)}
+                                {rowTitle(row)}
                               </text>
-                              <box flexGrow={1} minWidth={0} />
                               <text fg={rowTimeColor(theme(), selectedRow())} wrapMode="none">
                                 {rowTime(row, timeTick())}
                               </text>
@@ -447,7 +447,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
 
         <box
           flexDirection="column"
-          height={promptPanelHeight}
+          flexShrink={0}
           border={["top"]}
           borderColor={theme().borderSubtle}
           paddingTop={1}
@@ -460,7 +460,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
             fallback={(
               <Show when={selected()} keyed fallback={<text fg={theme().textMuted}>Select a session.</text>}>
                 {(row) => (
-                  <box flexDirection="column" height="100%">
+                  <box flexDirection="column">
                     <box paddingTop={0} flexDirection="column" gap={0} flexGrow={1} minHeight={0}>
                       <Show
                         when={promptMode() === "reply"}
@@ -479,27 +479,22 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
                           </box>
                         )}
                       >
-                        <box flexDirection="column" height="100%" minHeight={0}>
-                          <box height={promptHeight} maxHeight={promptHeight} overflow="hidden">
-                            <props.api.ui.Prompt
-                              sessionID={row.id}
-                              visible
-                              ref={(ref) => {
-                                promptRef = ref;
-                                if (ref && promptMode() === "reply") ref.focus();
-                              }}
-                              onSubmit={() => {
-                                promptRef?.blur();
-                                setPromptMode(undefined);
-                                scroll?.focus();
-                                refresh();
-                              }}
-                              showPlaceholder
-                              placeholders={{ normal: ["Reply to this thread..."] }}
-                            />
-                          </box>
-                          <box height={promptBottomSpacing} />
-                        </box>
+                        <props.api.ui.Prompt
+                          sessionID={row.id}
+                          visible
+                          ref={(ref) => {
+                            promptRef = ref;
+                            if (ref && promptMode() === "reply") ref.focus();
+                          }}
+                          onSubmit={() => {
+                            promptRef?.blur();
+                            setPromptMode(undefined);
+                            scroll?.focus();
+                            refresh();
+                          }}
+                          showPlaceholder
+                          placeholders={{ normal: ["Reply to this thread..."] }}
+                        />
                       </Show>
                     </box>
                   </box>
@@ -507,7 +502,7 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
               </Show>
             )}
           >
-            <box flexDirection="column" height="100%">
+            <box flexDirection="column">
               <box flexDirection="row" gap={2}>
                 <text fg={theme().text} attributes={TextAttributes.BOLD}>New thread</text>
                 <text fg={theme().textMuted}>enter start</text>
@@ -515,22 +510,17 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
               </box>
 
               <box paddingTop={0} flexDirection="column" gap={0} flexGrow={1} minHeight={0}>
-                <box flexDirection="column" height="100%" minHeight={0}>
-                  <box height={promptHeight} maxHeight={promptHeight} overflow="hidden">
-                    <props.api.ui.Prompt
-                      sessionID={newSessionID()}
-                      visible
-                      ref={(ref) => (newPromptRef = ref)}
-                      onSubmit={() => {
-                        closePrompt();
-                        refresh();
-                      }}
-                      showPlaceholder
-                      placeholders={{ normal: ["Start a new thread..."] }}
-                    />
-                  </box>
-                  <box height={promptBottomSpacing} />
-                </box>
+                <props.api.ui.Prompt
+                  sessionID={newSessionID()}
+                  visible
+                  ref={(ref) => (newPromptRef = ref)}
+                  onSubmit={() => {
+                    closePrompt();
+                    refresh();
+                  }}
+                  showPlaceholder
+                  placeholders={{ normal: ["Start a new thread..."] }}
+                />
               </box>
             </box>
           </Show>

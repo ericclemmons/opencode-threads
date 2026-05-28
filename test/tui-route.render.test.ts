@@ -163,6 +163,30 @@ describe("AgentViewRoute rendered output", () => {
     }
   });
 
+  test("lets thread titles use the available row width", async () => {
+    const { createComponent, testRender } = await import("@opentui/solid");
+    const { AgentViewRoute } = await import("../src/tui-route");
+    const setupApi = api({
+      sessions: [
+        {
+          id: "long-title",
+          title: "This title should keep using all the available horizontal row space before time",
+          time: { updated: Date.parse("2026-05-20T12:00:00Z") },
+        },
+      ],
+    });
+    const setup = await testRender(() => createComponent(AgentViewRoute, { api: setupApi.api }), { width: 90, height: 24 });
+
+    try {
+      await settle(setup.renderOnce);
+      const row = setup.captureCharFrame().split("\n").find((line) => line.includes("This title should"));
+
+      expect(row).toContain("horizontal row space");
+    } finally {
+      setup.renderer.destroy();
+    }
+  });
+
   test("opens the native prompt when replying to a selected thread", async () => {
     const { createComponent, testRender } = await import("@opentui/solid");
     const { AgentViewRoute } = await import("../src/tui-route");
