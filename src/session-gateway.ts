@@ -126,11 +126,24 @@ export class SessionGateway {
 
   async updateTitle(sessionID: string, title: string) {
     const safeTitle = title.slice(0, 120);
-    try {
-      await this.session.update?.({ path: { id: sessionID }, body: { title: safeTitle } });
-    } catch {
-      await this.session.update?.({ sessionID, title: safeTitle });
+    let lastError: unknown;
+
+    for (const payload of [
+      { path: { id: sessionID }, body: { title: safeTitle } },
+      { path: { sessionID }, body: { title: safeTitle } },
+      { sessionID, title: safeTitle },
+    ]) {
+      try {
+        const result = await this.session.update?.(payload);
+        const error = resultError(result);
+        if (!error) return;
+        lastError = error;
+      } catch (error) {
+        lastError = error;
+      }
     }
+
+    throw lastError ?? new Error("session update unavailable");
   }
 
   async sendPromptParts(sessionID: string, parts: any[]) {
