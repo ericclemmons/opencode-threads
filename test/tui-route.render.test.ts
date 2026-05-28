@@ -144,7 +144,7 @@ describe("AgentViewRoute rendered output", () => {
     const { createComponent, testRender } = await import("@opentui/solid");
     const { AgentViewRoute } = await import("../src/tui-route");
     const setupApi = api();
-    const setup = await testRender(() => createComponent(AgentViewRoute, { api: setupApi.api }), { width: 100, height: 24 });
+    const setup = await testRender(() => createComponent(AgentViewRoute, { api: setupApi.api }), { width: 100, height: 30 });
 
     try {
       await settle(setup.renderOnce);
@@ -155,6 +155,7 @@ describe("AgentViewRoute rendered output", () => {
       expect(frame).toContain("Parent thread");
       expect(frame).toContain("Child thread");
       expect(frame).toContain("Preview for parent");
+      expect(frame.split("\n").find((line) => line.includes("Parent thread"))).not.toContain("Preview for parent");
       expect(frame).toContain("Reply to this thread");
       expect(setupApi.listeners).toContain("session.created");
     } finally {
@@ -243,6 +244,7 @@ describe("AgentViewRoute rendered output", () => {
 
       expect(frame).toContain("New thread");
       expect(frame).toContain("Start a new thread");
+      expect(frame.split("\n").find((line) => line.includes("New thread") && line.includes("now"))).not.toContain("Start a new thread");
       expect(frame).not.toContain("Loading sessions");
     } finally {
       setup.renderer.destroy();
