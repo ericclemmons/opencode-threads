@@ -508,7 +508,10 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
                             <props.api.ui.Prompt
                               sessionID={row.id}
                               visible
-                              ref={(ref) => (promptRef = ref)}
+                              ref={(ref) => {
+                                promptRef = ref;
+                                if (ref && promptMode() === "reply") ref.focus();
+                              }}
                               onSubmit={() => {
                                 promptRef?.blur();
                                 setPromptMode(undefined);

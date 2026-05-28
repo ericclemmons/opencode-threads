@@ -12,7 +12,7 @@ const theme = {
   warning: "#ffcc66",
 };
 
-function api(options: { sessions?: any[]; blockRefresh?: boolean } = {}) {
+function api(options: { sessions?: any[]; blockRefresh?: boolean; deferPromptRefs?: boolean } = {}) {
   const navigations: Array<[string, unknown]> = [];
   const listeners: string[] = [];
   const createdTitles: string[] = [];
@@ -20,6 +20,7 @@ function api(options: { sessions?: any[]; blockRefresh?: boolean } = {}) {
   const promptCalls: unknown[] = [];
   const listenerHandlers: Record<string, (event: any) => void> = {};
   const promptRefs: Array<{ current: { input: string; parts: any[] }; focused: boolean; resets: number }> = [];
+  const pendingPromptRefs: Array<() => void> = [];
   let keyHandler: ((input: any) => void) | undefined;
   let listCalls = 0;
   const sessions = options.sessions ?? [
@@ -110,7 +111,9 @@ function api(options: { sessions?: any[]; blockRefresh?: boolean } = {}) {
             },
           };
           promptRefs.push(ref);
-          props.ref?.(ref);
+          const setRef = () => props.ref?.(ref);
+          if (options.deferPromptRefs) pendingPromptRefs.push(setRef);
+          else setRef();
           return undefined;
         },
         toast: () => {},
@@ -121,6 +124,7 @@ function api(options: { sessions?: any[]; blockRefresh?: boolean } = {}) {
       event: { name, ctrl: false, meta: false, super: false },
       consume: () => {},
     }),
+    flushPromptRefs: () => pendingPromptRefs.splice(0).forEach((setRef) => setRef()),
     listeners,
     navigations,
     createdTitles,
@@ -168,6 +172,24 @@ describe("AgentViewRoute rendered output", () => {
       await settle(setup.renderOnce);
       setupApi.key("r");
       await settle(setup.renderOnce);
+
+      expect(setupApi.promptRefs.at(-1)?.focused).toBe(true);
+    } finally {
+      setup.renderer.destroy();
+    }
+  });
+
+  test("focuses the reply prompt when its ref is provided after opening", async () => {
+    const { createComponent, testRender } = await import("@opentui/solid");
+    const { AgentViewRoute } = await import("../src/tui-route");
+    const setupApi = api({ deferPromptRefs: true });
+    const setup = await testRender(() => createComponent(AgentViewRoute, { api: setupApi.api }), { width: 100, height: 24 });
+
+    try {
+      await settle(setup.renderOnce);
+      setupApi.key("r");
+      await settle(setup.renderOnce);
+      setupApi.flushPromptRefs();
 
       expect(setupApi.promptRefs.at(-1)?.focused).toBe(true);
     } finally {
