@@ -7,7 +7,7 @@ import { SessionGateway } from "./session-gateway";
 import { groupThreadRows, type AgentSession } from "./thread-catalog";
 import { handleThreadKeyboard } from "./tui-keyboard";
 import { loadSessions } from "./tui-loader";
-import { padCell, rowStatusText, rowTime, rowTimeColor, rowTitle, rowTitleColor, statusColor, truncate } from "./tui-format";
+import { padCell, rowStatusText, rowTime, rowTimeColor, rowTitle, rowTitleColor, statusColor } from "./tui-format";
 
 const activeSessionIDs = new Set<string>();
 const promptHeight = 5;
@@ -369,10 +369,12 @@ export function AgentViewRoute(props: AgentViewRouteProps) {
                               <text
                                 fg={rowTitleColor(theme(), row, selectedRow())}
                                 wrapMode="none"
+                                flexGrow={1}
+                                minWidth={0}
+                                truncate
                               >
-                                {padCell(truncate(rowTitle(row), 34), 36)}
+                                {rowTitle(row)}
                               </text>
-                              <box flexGrow={1} minWidth={0} />
                               <text fg={rowTimeColor(theme(), selectedRow())} wrapMode="none">
                                 {rowTime(row, timeTick())}
                               </text>
